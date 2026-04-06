@@ -1,4 +1,4 @@
 window.DCMS_ADMIN_CONFIG = {
-  apiBaseUrl: "http://localhost:3000",
+  apiBaseUrl: "https://dcms-backend-d44f.onrender.com",
   portalName: "AIMST DCMS Control Room"
 };
