@@ -1,0 +1,34 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>AIMST DCMS Admin Portal</title>
+    <link rel="preconnect" href="https://cdn.jsdelivr.net" />
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <div class="background-orb orb-one"></div>
+    <div class="background-orb orb-two"></div>
+    <div class="background-grid"></div>
+
+    <div class="page-shell">
+      <header class="topbar">
+        <div>
+          <p class="eyebrow">AIMST University</p>
+          <h1>Digital Cafeteria Admin Portal</h1>
+        </div>
+        <div class="topbar-actions">
+          <span class="status-pill" id="serverStatus">Backend connection pending</span>
+          <button class="ghost-button hidden" id="logoutButton" type="button">Log Out</button>
+        </div>
+      </header>
+
+      <main id="appRoot"></main>
+    </div>
+
+    <script src="./config.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.4/build/qrcode.min.js"></script>
+    <script src="./app.js"></script>
+  </body>
+</html>
