@@ -18,12 +18,15 @@ const COUPON_TOKEN_TTL_MINUTES = Number(process.env.COUPON_TOKEN_TTL_MINUTES || 
 app.use(cors());
 app.use(bodyParser.json());
 
-const db = mysql.createConnection({
+const db = mysql.createPool({
   host: process.env.TIDB_HOST,
   port: process.env.TIDB_PORT,
   user: process.env.TIDB_USER,
   password: process.env.TIDB_PASSWORD,
   database: process.env.TIDB_DATABASE,
+  connectionLimit: Number(process.env.DB_CONNECTION_LIMIT || 10),
+  waitForConnections: true,
+  queueLimit: 0,
   ssl: {
     rejectUnauthorized: false,
   },
@@ -37,6 +40,28 @@ function dbQuery(query, params = []) {
         return;
       }
       resolve(results);
+    });
+  });
+}
+
+function verifyDatabaseConnection() {
+  return new Promise((resolve, reject) => {
+    db.getConnection((err, connection) => {
+      if (err) {
+        reject(err);
+        return;
+      }
+
+      connection.ping((pingError) => {
+        connection.release();
+
+        if (pingError) {
+          reject(pingError);
+          return;
+        }
+
+        resolve();
+      });
     });
   });
 }
@@ -1088,20 +1113,18 @@ app.get('/admin/redemptions', authenticateAdmin, async (req, res) => {
   }
 });
 
-db.connect(async (err) => {
-  if (err) {
-    console.error('Error connecting to TiDB:', err);
-    return;
-  }
-
+async function bootstrapDatabase() {
   try {
+    await verifyDatabaseConnection();
     await initialiseDatabase();
     console.log(`Connected to TiDB Cloud and initialised DCMS tables (${APP_TIME_ZONE})`);
   } catch (error) {
     console.error('Database initialisation error:', error);
   }
-});
+}
 
 app.listen(port, () => {
   console.log(`Server listening at http://localhost:${port}`);
 });
+
+bootstrapDatabase();
