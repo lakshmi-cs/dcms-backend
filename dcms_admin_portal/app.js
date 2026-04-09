@@ -91,7 +91,7 @@ async function api(path, options = {}) {
     throw error;
   }
 
-  return payload.data;
+  return payload.data ?? payload;
 }
 
 async function checkHealth() {
@@ -117,7 +117,13 @@ async function login(username, password) {
       body: { username, password },
     });
 
-    state.token = data.token;
+    const token = data?.token;
+
+    if (!token) {
+      throw new Error("Login response did not include an admin token");
+    }
+
+    state.token = token;
     localStorage.setItem(AUTH_STORAGE_KEY, state.token);
     showFlash("Admin session started", "success");
     await loadDashboard();
