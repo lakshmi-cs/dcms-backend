@@ -1,9 +1,42 @@
 const config = window.DCMS_ADMIN_CONFIG || {};
-const API_BASE_URL = String(config.apiBaseUrl || "http://localhost:3000").replace(/\/$/, "");
 const AUTH_STORAGE_KEY = "dcms_admin_token";
+const API_BASE_STORAGE_KEY = "dcms_admin_api_base_url";
+
+function normalizeApiBaseUrl(value) {
+  return String(value || "").trim().replace(/\/$/, "");
+}
+
+function resolveDefaultApiBaseUrl() {
+  const configuredUrl = normalizeApiBaseUrl(config.apiBaseUrl);
+  if (configuredUrl) {
+    return configuredUrl;
+  }
+
+  const { protocol, hostname, origin } = window.location;
+  if (protocol === "http:" || protocol === "https:") {
+    if (hostname === "localhost" || hostname === "127.0.0.1") {
+      return "http://localhost:3000";
+    }
+    return normalizeApiBaseUrl(origin);
+  }
+
+  return "http://localhost:3000";
+}
+
+function getStoredApiBaseUrl() {
+  const storedUrl = normalizeApiBaseUrl(localStorage.getItem(API_BASE_STORAGE_KEY));
+  return storedUrl || resolveDefaultApiBaseUrl();
+}
+
+function setApiBaseUrl(value) {
+  const normalized = normalizeApiBaseUrl(value);
+  state.apiBaseUrl = normalized || resolveDefaultApiBaseUrl();
+  localStorage.setItem(API_BASE_STORAGE_KEY, state.apiBaseUrl);
+}
 
 const state = {
   token: localStorage.getItem(AUTH_STORAGE_KEY) || "",
+  apiBaseUrl: getStoredApiBaseUrl(),
   dashboard: null,
   content: null,
   sessionQr: null,
@@ -76,13 +109,27 @@ async function api(path, options = {}) {
     request.body = JSON.stringify(options.body);
   }
 
-  const response = await fetch(`${API_BASE_URL}${path}`, request);
-  let payload = {};
-
+  let response;
   try {
-    payload = await response.json();
+    response = await fetch(`${state.apiBaseUrl}${path}`, request);
   } catch (error) {
-    payload = {};
+    throw new Error(`Cannot reach the admin API at ${state.apiBaseUrl}. Check the API base URL and backend availability.`);
+  }
+
+  const rawPayload = await response.text();
+  if (!rawPayload.trim()) {
+    const error = new Error(`The API at ${state.apiBaseUrl} returned an empty response for ${path}.`);
+    error.status = response.status;
+    throw error;
+  }
+
+  let payload = {};
+  try {
+    payload = JSON.parse(rawPayload);
+  } catch (error) {
+    const parseError = new Error(`The API at ${state.apiBaseUrl} did not return JSON for ${path}.`);
+    parseError.status = response.status;
+    throw parseError;
   }
 
   if (!response.ok || payload.status === "error") {
@@ -99,7 +146,7 @@ async function checkHealth() {
     const data = await api("/health", { auth: false });
     const label = data.activeMeal?.isActive
       ? `${data.activeMeal.mealName} is live`
-      : `Connected · ${data.timeZone}`;
+      : `Connected Â· ${data.timeZone}`;
     setServerStatus(label, "success");
   } catch (error) {
     setServerStatus("Backend unavailable", "danger");
@@ -190,6 +237,16 @@ function loginMarkup() {
         </div>
         <form id="loginForm" class="auth-form">
           <label>
+            <span>API base URL</span>
+            <input
+              name="apiBaseUrl"
+              type="url"
+              placeholder="http://localhost:3000"
+              value="${escapeHtml(state.apiBaseUrl)}"
+              required
+            />
+          </label>
+          <label>
             <span>Admin username</span>
             <input name="username" type="text" placeholder="admin" required />
           </label>
@@ -200,7 +257,9 @@ function loginMarkup() {
           <button type="submit" class="primary-button" ${state.loading ? "disabled" : ""}>
             ${state.loading ? "Signing in..." : "Enter Control Room"}
           </button>
-          <p class="helper-copy">These credentials come from your backend <code>.env</code> file.</p>
+          <p class="helper-copy">
+            These credentials come from your backend <code>.env</code> file. The API base URL is saved in this browser so you can correct it without editing code again.
+          </p>
         </form>
       </div>
     </section>
@@ -214,6 +273,24 @@ function statCardMarkup(label, value, detail) {
       <strong>${escapeHtml(value)}</strong>
       <small>${escapeHtml(detail)}</small>
     </article>
+  `;
+}
+
+function detailItemMarkup(label, value) {
+  return `
+    <div class="detail-item">
+      <span>${escapeHtml(label)}</span>
+      <strong>${escapeHtml(value || "Not available")}</strong>
+    </div>
+  `;
+}
+
+function navLinkMarkup(target, label, detail) {
+  return `
+    <a class="ops-nav-link" href="${escapeHtml(target)}">
+      <strong>${escapeHtml(label)}</strong>
+      <small>${escapeHtml(detail)}</small>
+    </a>
   `;
 }
 
@@ -364,191 +441,272 @@ function dashboardMarkup() {
   const mealWindows = content.mealWindows || [];
   const news = content.news || [];
   const redemptions = dashboard.recentRedemptions || [];
+  const serverStamp = `${content.serverDate || dashboard.serverDate || ""} ${content.serverTime || dashboard.serverTime || ""}`.trim();
+  const liveMealLabel = activeMeal.isActive ? activeMeal.mealName : "No active meal window";
+  const liveMealDetail = activeMeal.timeLabel || "Waiting for next service window";
+  const apiBaseLabel = state.apiBaseUrl || "Not configured";
 
   return `
-    <section class="hero-panel glass-card">
-      <div class="hero-copy">
-        <p class="eyebrow">Control room</p>
-        <h2>${escapeHtml(config.portalName || "AIMST DCMS Control Room")}</h2>
-        <p>
-          Keep cafeteria operations synchronized with the mobile application by publishing live menus, updating announcements,
-          managing service windows, and validating student QR redemptions.
-        </p>
-        <div class="hero-tags">
-          <span class="hero-tag">${escapeHtml(content.timeZone || "Asia/Kuala_Lumpur")}</span>
-          <span class="hero-tag">${activeMeal.isActive ? `${escapeHtml(activeMeal.mealName)} live now` : "No active meal window"}</span>
-          <span class="hero-tag">Student app linked through shared API</span>
+    <div class="workspace-shell">
+      <aside class="ops-sidebar glass-card">
+        <div class="sidebar-block">
+          <p class="eyebrow">Operations map</p>
+          <h3>${escapeHtml(config.portalName || "AIMST DCMS Control Room")}</h3>
+          <p class="sidebar-copy">
+            Manage service timing, menus, live QR operations, and student-facing announcements from one shared backend workspace.
+          </p>
         </div>
+
+        <div class="sidebar-block sidebar-summary">
+          ${detailItemMarkup("API base", apiBaseLabel)}
+          ${detailItemMarkup("Server time", serverStamp)}
+          ${detailItemMarkup("Current meal", liveMealLabel)}
+          ${detailItemMarkup("Meal window", liveMealDetail)}
+        </div>
+
+        <nav class="ops-nav">
+          ${navLinkMarkup("#overviewSection", "Overview", "Live status and backend sync")}
+          ${navLinkMarkup("#serviceSection", "Service Control", "Meal windows and counter QR")}
+          ${navLinkMarkup("#menuSection", "Menu Publishing", "Student-facing daily menu")}
+          ${navLinkMarkup("#newsSection", "News Centre", "Announcements and scheduling")}
+          ${navLinkMarkup("#validationSection", "Validation", "Redeem and verify student QR")}
+          ${navLinkMarkup("#activitySection", "Activity Log", "Recent redemptions")}
+        </nav>
+      </aside>
+
+      <div class="ops-main">
+        <section class="hero-panel glass-card" id="overviewSection">
+          <div class="hero-copy">
+            <p class="eyebrow">Control room</p>
+            <h2>${escapeHtml(config.portalName || "AIMST DCMS Control Room")}</h2>
+            <p>
+              Keep cafeteria operations systematic: update service hours first, publish today's menu, manage student announcements,
+              and then validate live QR redemptions from the same backend the app reads.
+            </p>
+            <div class="hero-tags">
+              <span class="hero-tag">${escapeHtml(content.timeZone || "Asia/Kuala_Lumpur")}</span>
+              <span class="hero-tag">${activeMeal.isActive ? `${escapeHtml(activeMeal.mealName)} live now` : "No active meal window"}</span>
+              <span class="hero-tag">Student app connected through shared API</span>
+            </div>
+          </div>
+          <div class="hero-actions">
+            <button class="primary-button" id="refreshDashboardButton" type="button">Refresh Workspace</button>
+            <div class="hero-links">
+              <a class="secondary-button link-button" href="#menuSection">Open Menu Publishing</a>
+              <a class="secondary-button link-button" href="#newsSection">Open News Centre</a>
+            </div>
+            <p>Server time: ${escapeHtml(serverStamp || "Unavailable")}</p>
+          </div>
+        </section>
+
+        <section class="stats-grid">
+          ${statCardMarkup("Live meal status", activeMeal.isActive ? activeMeal.mealName : "Closed", activeMeal.timeLabel || "Waiting for next window")}
+          ${statCardMarkup("Menus ready", stats.menusConfigured || 0, "Published for today's service")}
+          ${statCardMarkup("News published", stats.publishedNews || 0, "Visible to students")}
+          ${statCardMarkup("QR issued today", stats.qrIssuedToday || 0, "Student coupons generated")}
+          ${statCardMarkup("QR redeemed today", stats.qrRedeemedToday || 0, "Counter scans completed")}
+        </section>
+
+        <section class="module-section" id="serviceSection">
+          <div class="module-header">
+            <div>
+              <p class="eyebrow">Service operations</p>
+              <h3>Control active cafeteria service</h3>
+            </div>
+            <p class="module-copy">
+              Update meal timing before service starts, then generate the counter QR display for the current or upcoming meal window.
+            </p>
+          </div>
+          <div class="content-grid">
+            <article class="glass-card panel-card">
+              <div class="section-row">
+                <div>
+                  <p class="eyebrow">Step 1</p>
+                  <h3>Meal windows</h3>
+                </div>
+                <button type="button" class="secondary-button" id="saveScheduleButton">Save Meal Windows</button>
+              </div>
+              <p class="panel-copy">These service times drive app availability, QR issuance windows, and operator guidance.</p>
+              <form id="scheduleForm" class="stacked-form">
+                ${mealWindowRows(mealWindows)}
+              </form>
+            </article>
+
+            <article class="glass-card panel-card">
+              <div class="section-row">
+                <div>
+                  <p class="eyebrow">Step 2</p>
+                  <h3>Session display QR</h3>
+                </div>
+                <button type="button" class="secondary-button" id="generateSessionQrButton">Generate Counter QR</button>
+              </div>
+              <p class="panel-copy">Use this QR at the cafeteria counter so staff can operate against the correct meal service.</p>
+              <div class="session-qr-controls">
+                <label>
+                  <span>Select meal</span>
+                  <select id="sessionMealCode">
+                    ${mealWindows
+                      .map(
+                        (window) => `
+                          <option value="${escapeHtml(window.mealCode)}" ${activeMeal.mealCode === window.mealCode ? "selected" : ""}>
+                            ${escapeHtml(window.mealName)}
+                          </option>
+                        `,
+                      )
+                      .join("")}
+                  </select>
+                </label>
+              </div>
+              <div class="qr-shell">
+                <canvas id="sessionQrCanvas" width="220" height="220"></canvas>
+                <div class="qr-caption">
+                  <strong>${state.sessionQr ? escapeHtml(state.sessionQr.meal.mealName) : "Generate a live counter QR"}</strong>
+                  <p>${state.sessionQr ? escapeHtml(state.sessionQr.meal.timeLabel) : "Use this during breakfast, lunch, or dinner service."}</p>
+                </div>
+              </div>
+            </article>
+          </div>
+        </section>
+
+        <section class="module-section" id="menuSection">
+          <div class="module-header">
+            <div>
+              <p class="eyebrow">Student content</p>
+              <h3>Publish today's menu</h3>
+            </div>
+            <p class="module-copy">
+              Save one clean menu for each meal window. Students will see the updated menu after their app refreshes.
+            </p>
+          </div>
+          <article class="glass-card panel-card">
+            <div class="section-row">
+              <div>
+                <p class="eyebrow">Menu management</p>
+                <h3>Daily menu board</h3>
+              </div>
+              <button type="button" class="secondary-button" id="saveMenusButton">Publish Today's Menu</button>
+            </div>
+            <form id="menuForm" class="stacked-form">
+              ${menuEditors(menus)}
+            </form>
+          </article>
+        </section>
+
+        <section class="module-section" id="newsSection">
+          <div class="module-header">
+            <div>
+              <p class="eyebrow">Broadcast centre</p>
+              <h3>Manage cafeteria announcements</h3>
+            </div>
+            <p class="module-copy">
+              Keep draft and published updates organized. Published news goes to the student app based on its publish and expiry times.
+            </p>
+          </div>
+          <section class="news-layout">
+            <article class="glass-card panel-card">
+              <div class="section-row">
+                <div>
+                  <p class="eyebrow">Authoring</p>
+                  <h3>Announcement composer</h3>
+                </div>
+                <button type="button" class="secondary-button" id="resetNewsFormButton">Clear Form</button>
+              </div>
+              <form id="newsForm" class="stacked-form">
+                <input type="hidden" name="newsId" value="" />
+                <div class="dual-field-grid">
+                  <label>
+                    <span>Title</span>
+                    <input type="text" name="title" placeholder="Announcement title" required />
+                  </label>
+                  <label>
+                    <span>Category</span>
+                    <select name="category">
+                      <option value="General">General</option>
+                      <option value="Operations">Operations</option>
+                      <option value="System">System</option>
+                      <option value="Promotion">Promotion</option>
+                    </select>
+                  </label>
+                </div>
+                <div class="dual-field-grid">
+                  <label>
+                    <span>Status</span>
+                    <select name="status">
+                      <option value="published">Published</option>
+                      <option value="draft">Draft</option>
+                    </select>
+                  </label>
+                  <label>
+                    <span>Priority</span>
+                    <input type="number" name="priority" min="0" max="10" value="0" />
+                  </label>
+                </div>
+                <div class="dual-field-grid">
+                  <label>
+                    <span>Publish time</span>
+                    <input type="datetime-local" name="publishAt" />
+                  </label>
+                  <label>
+                    <span>Expire time</span>
+                    <input type="datetime-local" name="expiresAt" />
+                  </label>
+                </div>
+                <label>
+                  <span>Message</span>
+                  <textarea name="body" rows="6" placeholder="Write the cafeteria announcement here" required></textarea>
+                </label>
+                <button type="submit" class="primary-button">Save Announcement</button>
+              </form>
+            </article>
+
+            <article class="news-column">
+              ${newsCards(news)}
+            </article>
+          </section>
+        </section>
+
+        <section class="module-section" id="validationSection">
+          <div class="module-header">
+            <div>
+              <p class="eyebrow">Counter validation</p>
+              <h3>Redeem student QR securely</h3>
+            </div>
+            <p class="module-copy">
+              Paste or scan the QR token generated in the student app to validate it against the live backend and meal window.
+            </p>
+          </div>
+          <article class="glass-card panel-card">
+            <form id="validatorForm" class="stacked-form">
+              <label>
+                <span>Operator name</span>
+                <input type="text" name="operatorName" placeholder="Cafeteria staff name" />
+              </label>
+              <label>
+                <span>Student QR token</span>
+                <textarea name="token" rows="6" placeholder="Paste or scan the full QR token here"></textarea>
+              </label>
+              <button type="submit" class="primary-button">Validate And Redeem</button>
+            </form>
+            ${validatorResultMarkup()}
+          </article>
+        </section>
+
+        <section class="module-section" id="activitySection">
+          <div class="module-header">
+            <div>
+              <p class="eyebrow">Audit trail</p>
+              <h3>Recent QR activity</h3>
+            </div>
+            <p class="module-copy">
+              Use this log to confirm whether coupons were issued, redeemed, or left unused during today's service.
+            </p>
+          </div>
+          <article class="glass-card panel-card">
+            ${redemptionsMarkup(redemptions)}
+          </article>
+        </section>
       </div>
-      <div class="hero-actions">
-        <button class="primary-button" id="refreshDashboardButton" type="button">Refresh Live Data</button>
-        <p>Server time: ${escapeHtml(`${content.serverDate || ""} ${content.serverTime || ""}`.trim())}</p>
-      </div>
-    </section>
-
-    <section class="stats-grid">
-      ${statCardMarkup("Live meal status", activeMeal.isActive ? activeMeal.mealName : "Closed", activeMeal.timeLabel || "Waiting for next window")}
-      ${statCardMarkup("Menus ready", stats.menusConfigured || 0, "Published for today's service")}
-      ${statCardMarkup("News published", stats.publishedNews || 0, "Visible to students")}
-      ${statCardMarkup("QR issued today", stats.qrIssuedToday || 0, "Student coupons generated")}
-      ${statCardMarkup("QR redeemed today", stats.qrRedeemedToday || 0, "Counter scans completed")}
-    </section>
-
-    <section class="content-grid">
-      <article class="glass-card panel-card">
-        <div class="section-row">
-          <div>
-            <p class="eyebrow">Service schedule</p>
-            <h3>Meal windows</h3>
-          </div>
-          <button type="button" class="secondary-button" id="saveScheduleButton">Save Hours</button>
-        </div>
-        <form id="scheduleForm" class="stacked-form">
-          ${mealWindowRows(mealWindows)}
-        </form>
-      </article>
-
-      <article class="glass-card panel-card">
-        <div class="section-row">
-          <div>
-            <p class="eyebrow">Counter QR</p>
-            <h3>Session display QR</h3>
-          </div>
-          <button type="button" class="secondary-button" id="generateSessionQrButton">Generate QR</button>
-        </div>
-        <div class="session-qr-controls">
-          <label>
-            <span>Select meal</span>
-            <select id="sessionMealCode">
-              ${mealWindows
-                .map(
-                  (window) => `
-                    <option value="${escapeHtml(window.mealCode)}" ${activeMeal.mealCode === window.mealCode ? "selected" : ""}>
-                      ${escapeHtml(window.mealName)}
-                    </option>
-                  `,
-                )
-                .join("")}
-            </select>
-          </label>
-        </div>
-        <div class="qr-shell">
-          <canvas id="sessionQrCanvas" width="220" height="220"></canvas>
-          <div class="qr-caption">
-            <strong>${state.sessionQr ? escapeHtml(state.sessionQr.meal.mealName) : "Generate a live counter QR"}</strong>
-            <p>${state.sessionQr ? escapeHtml(state.sessionQr.meal.timeLabel) : "Use this at the cafeteria counter during breakfast, lunch, or dinner service."}</p>
-          </div>
-        </div>
-      </article>
-    </section>
-
-    <section class="content-grid">
-      <article class="glass-card panel-card">
-        <div class="section-row">
-          <div>
-            <p class="eyebrow">Daily publishing</p>
-            <h3>Today's menu</h3>
-          </div>
-          <button type="button" class="secondary-button" id="saveMenusButton">Update Menu</button>
-        </div>
-        <form id="menuForm" class="stacked-form">
-          ${menuEditors(menus)}
-        </form>
-      </article>
-
-      <article class="glass-card panel-card">
-        <div class="section-row">
-          <div>
-            <p class="eyebrow">Counter validation</p>
-            <h3>Redeem student QR</h3>
-          </div>
-        </div>
-        <form id="validatorForm" class="stacked-form">
-          <label>
-            <span>Operator name</span>
-            <input type="text" name="operatorName" placeholder="Cafeteria staff name" />
-          </label>
-          <label>
-            <span>Student QR token</span>
-            <textarea name="token" rows="6" placeholder="Paste or scan the full QR token here"></textarea>
-          </label>
-          <button type="submit" class="primary-button">Validate And Redeem</button>
-        </form>
-        ${validatorResultMarkup()}
-      </article>
-    </section>
-
-    <section class="news-layout">
-      <article class="glass-card panel-card">
-        <div class="section-row">
-          <div>
-            <p class="eyebrow">Broadcast centre</p>
-            <h3>Publish cafeteria news</h3>
-          </div>
-          <button type="button" class="secondary-button" id="resetNewsFormButton">Clear Form</button>
-        </div>
-        <form id="newsForm" class="stacked-form">
-          <input type="hidden" name="newsId" value="" />
-          <div class="dual-field-grid">
-            <label>
-              <span>Title</span>
-              <input type="text" name="title" placeholder="Announcement title" required />
-            </label>
-            <label>
-              <span>Category</span>
-              <select name="category">
-                <option value="General">General</option>
-                <option value="Operations">Operations</option>
-                <option value="System">System</option>
-                <option value="Promotion">Promotion</option>
-              </select>
-            </label>
-          </div>
-          <div class="dual-field-grid">
-            <label>
-              <span>Status</span>
-              <select name="status">
-                <option value="published">Published</option>
-                <option value="draft">Draft</option>
-              </select>
-            </label>
-            <label>
-              <span>Priority</span>
-              <input type="number" name="priority" min="0" max="10" value="0" />
-            </label>
-          </div>
-          <div class="dual-field-grid">
-            <label>
-              <span>Publish time</span>
-              <input type="datetime-local" name="publishAt" />
-            </label>
-            <label>
-              <span>Expire time</span>
-              <input type="datetime-local" name="expiresAt" />
-            </label>
-          </div>
-          <label>
-            <span>Message</span>
-            <textarea name="body" rows="6" placeholder="Write the cafeteria announcement here" required></textarea>
-          </label>
-          <button type="submit" class="primary-button">Save News</button>
-        </form>
-      </article>
-
-      <article class="news-column">
-        ${newsCards(news)}
-      </article>
-    </section>
-
-    <section class="glass-card panel-card">
-      <div class="section-row">
-        <div>
-          <p class="eyebrow">Scan history</p>
-          <h3>Recent QR activity</h3>
-        </div>
-      </div>
-      ${redemptionsMarkup(redemptions)}
-    </section>
+    </div>
   `;
 }
 
@@ -565,6 +723,7 @@ function bindEvents() {
     loginForm.addEventListener("submit", (event) => {
       event.preventDefault();
       const formData = new FormData(loginForm);
+      setApiBaseUrl(formData.get("apiBaseUrl"));
       login(formData.get("username"), formData.get("password"));
     });
   }
