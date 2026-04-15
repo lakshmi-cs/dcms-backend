@@ -95,6 +95,12 @@ function setServerStatus(message, tone = "neutral") {
   state.serverStatusTone = tone;
   serverStatus.textContent = message;
   serverStatus.dataset.tone = tone;
+
+  const workspaceServerStatus = document.getElementById("workspaceServerStatus");
+  if (workspaceServerStatus) {
+    workspaceServerStatus.textContent = message;
+    workspaceServerStatus.className = `toolbar-chip ${tone}`;
+  }
 }
 
 function showFlash(message, tone = "info") {
@@ -780,7 +786,7 @@ function dashboardMarkup() {
             />
           </label>
           <div class="toolbar-actions">
-            <span class="toolbar-chip ${escapeHtml(state.serverStatusTone)}">${escapeHtml(state.serverStatusMessage)}</span>
+            <span class="toolbar-chip ${escapeHtml(state.serverStatusTone)}" id="workspaceServerStatus">${escapeHtml(state.serverStatusMessage)}</span>
             <span class="toolbar-chip subtle">${escapeHtml(content.timeZone || "Asia/Kuala_Lumpur")}</span>
             <button class="secondary-button toolbar-button" id="refreshDashboardButton" type="button">Refresh</button>
             <button class="ghost-button toolbar-button" id="dashboardLogoutButton" type="button">Logout</button>
