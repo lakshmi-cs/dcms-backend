@@ -42,6 +42,7 @@ const state = {
   sessionQr: null,
   validationResult: null,
   workspaceQuery: "",
+  activeSection: "overview",
   serverStatusMessage: "Backend connection pending",
   serverStatusTone: "neutral",
   loading: false,
@@ -52,6 +53,15 @@ const serverStatus = document.getElementById("serverStatus");
 const logoutButton = document.getElementById("logoutButton");
 const shellTopbar = document.querySelector(".topbar");
 const pageShell = document.querySelector(".page-shell");
+
+const WORKSPACE_SECTIONS = [
+  { key: "overview", label: "Dashboard", detail: "Live overview and service health", terms: ["dashboard", "overview", "home", "summary"] },
+  { key: "service", label: "Service Control", detail: "Hours and counter QR", terms: ["service", "meal", "windows", "schedule", "hours", "qr", "counter"] },
+  { key: "menu", label: "Menu Publishing", detail: "Daily meal items", terms: ["menu", "publishing", "breakfast", "lunch", "dinner", "meals"] },
+  { key: "news", label: "News Centre", detail: "Student announcements", terms: ["news", "announcement", "broadcast", "draft", "published"] },
+  { key: "validation", label: "QR Validation", detail: "Redeem and verify", terms: ["validation", "redeem", "coupon", "token", "operator"] },
+  { key: "activity", label: "Activity Log", detail: "Recent redemptions", terms: ["activity", "log", "redemption", "history", "audit"] },
+];
 
 function escapeHtml(value) {
   return String(value ?? "")
@@ -292,23 +302,36 @@ function detailItemMarkup(label, value) {
   `;
 }
 
-function navLinkMarkup(target, label, detail) {
+function navLinkMarkup(key, label, detail) {
   return `
-    <a class="dashboard-nav-link" href="${escapeHtml(target)}">
+    <button type="button" class="dashboard-nav-link ${state.activeSection === key ? "is-active" : ""}" data-section="${escapeHtml(key)}">
       <strong>${escapeHtml(label)}</strong>
       <small>${escapeHtml(detail)}</small>
-    </a>
+    </button>
   `;
 }
 
-function matchesWorkspaceQuery(...values) {
-  const query = String(state.workspaceQuery || "").trim().toLowerCase();
-  if (!query) return true;
-  return values.some((value) => String(value || "").toLowerCase().includes(query));
+function resolveWorkspaceSection(query) {
+  const normalizedQuery = String(query || "").trim().toLowerCase();
+  if (!normalizedQuery) return null;
+  return WORKSPACE_SECTIONS.find((section) =>
+    section.terms.some((term) => term.includes(normalizedQuery) || normalizedQuery.includes(term)),
+  ) || null;
 }
 
-function sectionVisibilityClass(...values) {
-  return matchesWorkspaceQuery(...values) ? "" : " section-hidden";
+function sectionVisibilityClass(sectionKey) {
+  return state.activeSection === sectionKey ? "" : " section-hidden";
+}
+
+function overviewCardMarkup(sectionKey, title, detail, metricLabel, metricValue) {
+  return `
+    <article class="overview-card glass-card">
+      <span>${escapeHtml(metricLabel)}</span>
+      <strong>${escapeHtml(metricValue)}</strong>
+      <p>${escapeHtml(detail)}</p>
+      <button type="button" class="secondary-button" data-section="${escapeHtml(sectionKey)}">Open ${escapeHtml(title)}</button>
+    </article>
+  `;
 }
 
 function mealWindowRows(windows) {
@@ -462,6 +485,7 @@ function dashboardMarkup() {
   const liveMealLabel = activeMeal.isActive ? activeMeal.mealName : "No active meal window";
   const liveMealDetail = activeMeal.timeLabel || "Waiting for next service window";
   const apiBaseLabel = state.apiBaseUrl || "Not configured";
+  const resolvedQuerySection = resolveWorkspaceSection(state.workspaceQuery);
   return `
     <div class="dashboard-shell">
       <aside class="dashboard-sidebar">
@@ -476,16 +500,16 @@ function dashboardMarkup() {
         <div class="dashboard-sidebar-panel glass-card">
           <div class="dashboard-nav-group">
             <span class="dashboard-nav-label">Core</span>
-            ${navLinkMarkup("#overviewSection", "Dashboard", "Live overview and service health")}
-            ${navLinkMarkup("#serviceSection", "Service Control", "Hours and counter QR")}
-            ${navLinkMarkup("#menuSection", "Menu Publishing", "Daily meal items")}
+            ${navLinkMarkup("overview", "Dashboard", "Live overview and service health")}
+            ${navLinkMarkup("service", "Service Control", "Hours and counter QR")}
+            ${navLinkMarkup("menu", "Menu Publishing", "Daily meal items")}
           </div>
 
           <div class="dashboard-nav-group">
             <span class="dashboard-nav-label">Operations</span>
-            ${navLinkMarkup("#newsSection", "News Centre", "Student announcements")}
-            ${navLinkMarkup("#validationSection", "QR Validation", "Redeem and verify")}
-            ${navLinkMarkup("#activitySection", "Activity Log", "Recent redemptions")}
+            ${navLinkMarkup("news", "News Centre", "Student announcements")}
+            ${navLinkMarkup("validation", "QR Validation", "Redeem and verify")}
+            ${navLinkMarkup("activity", "Activity Log", "Recent redemptions")}
           </div>
         </div>
 
@@ -503,7 +527,7 @@ function dashboardMarkup() {
             <input
               id="workspaceSearch"
               type="search"
-              placeholder="Search sections, for example menu, news, qr, schedule..."
+              placeholder="Quick jump: menu, news, qr, validation..."
               value="${escapeHtml(state.workspaceQuery)}"
             />
           </label>
@@ -539,10 +563,14 @@ function dashboardMarkup() {
                 <span class="hero-tag">Student app linked to shared backend</span>
               </div>
               <div class="content-shortcuts">
-                <a class="secondary-button link-button" href="#menuSection">Go To Menu</a>
-                <a class="secondary-button link-button" href="#newsSection">Go To News</a>
+                <button type="button" class="secondary-button" data-section="menu">Open Menu</button>
+                <button type="button" class="secondary-button" data-section="news">Open News</button>
               </div>
-              <p class="search-hint" id="workspaceSearchHint">Quick jump across menu, news, QR, schedule, and activity</p>
+              <p class="search-hint" id="workspaceSearchHint">
+                ${resolvedQuerySection
+                  ? `Press Enter to open ${escapeHtml(resolvedQuerySection.label)}`
+                  : "Use quick jump to open a workspace section instantly"}
+              </p>
             </div>
           </section>
 
@@ -554,7 +582,15 @@ function dashboardMarkup() {
             ${statCardMarkup("QR redeemed today", stats.qrRedeemedToday || 0, "Counter scans completed")}
           </section>
 
-          <section class="module-section${sectionVisibilityClass("service meal windows qr schedule counter operations")}" id="serviceSection" data-search="service meal windows qr schedule counter operations">
+          <section class="overview-grid${sectionVisibilityClass("overview")}" id="overviewSection">
+            ${overviewCardMarkup("service", "Service Control", "Update service hours and generate the counter QR before meal windows begin.", "Current meal", liveMealLabel)}
+            ${overviewCardMarkup("menu", "Menu Publishing", "Publish breakfast, lunch, and dinner items students will see in the app.", "Menus ready", stats.menusConfigured || 0)}
+            ${overviewCardMarkup("news", "News Centre", "Create and schedule announcements without mixing them into other tasks.", "News live", stats.publishedNews || 0)}
+            ${overviewCardMarkup("validation", "QR Validation", "Scan or paste student QR tokens and redeem them against the live backend.", "Redeemed today", stats.qrRedeemedToday || 0)}
+            ${overviewCardMarkup("activity", "Activity Log", "Review recent coupon history in a dedicated audit view.", "Issued today", stats.qrIssuedToday || 0)}
+          </section>
+
+          <section class="module-section${sectionVisibilityClass("service")}" id="serviceSection">
             <div class="module-header">
               <div>
                 <p class="eyebrow">Service operations</p>
@@ -615,7 +651,7 @@ function dashboardMarkup() {
             </div>
           </section>
 
-          <section class="module-section${sectionVisibilityClass("menu publishing daily menu meals breakfast lunch dinner")}" id="menuSection" data-search="menu publishing daily menu meals breakfast lunch dinner">
+          <section class="module-section${sectionVisibilityClass("menu")}" id="menuSection">
             <div class="module-header">
               <div>
                 <p class="eyebrow">Student content</p>
@@ -639,7 +675,7 @@ function dashboardMarkup() {
             </article>
           </section>
 
-          <section class="module-section${sectionVisibilityClass("news announcement publish draft promotion operations system")}" id="newsSection" data-search="news announcement publish draft promotion operations system">
+          <section class="module-section${sectionVisibilityClass("news")}" id="newsSection">
             <div class="module-header">
               <div>
                 <p class="eyebrow">Broadcast centre</p>
@@ -712,7 +748,7 @@ function dashboardMarkup() {
             </section>
           </section>
 
-          <section class="module-section${sectionVisibilityClass("validation qr redeem operator token coupon")}" id="validationSection" data-search="validation qr redeem operator token coupon">
+          <section class="module-section${sectionVisibilityClass("validation")}" id="validationSection">
             <div class="module-header">
               <div>
                 <p class="eyebrow">Counter validation</p>
@@ -738,7 +774,7 @@ function dashboardMarkup() {
             </article>
           </section>
 
-          <section class="module-section${sectionVisibilityClass("activity log redemption issued redeemed history table")}" id="activitySection" data-search="activity log redemption issued redeemed history table">
+          <section class="module-section${sectionVisibilityClass("activity")}" id="activitySection">
             <div class="module-header">
               <div>
                 <p class="eyebrow">Audit trail</p>
@@ -768,25 +804,7 @@ function render() {
   }
   appRoot.innerHTML = state.token ? dashboardMarkup() : loginMarkup();
   bindEvents();
-  applyWorkspaceFilter();
   renderSessionQr();
-}
-
-function applyWorkspaceFilter() {
-  const query = String(state.workspaceQuery || "").trim().toLowerCase();
-  const hint = document.getElementById("workspaceSearchHint");
-
-  document.querySelectorAll("[data-search]").forEach((section) => {
-    const haystack = String(section.dataset.search || "").toLowerCase();
-    const visible = !query || haystack.includes(query);
-    section.classList.toggle("section-hidden", !visible);
-  });
-
-  if (hint) {
-    hint.textContent = query
-      ? `Filtering sections for "${state.workspaceQuery}"`
-      : "Quick jump across menu, news, QR, schedule, and activity";
-  }
 }
 
 function bindEvents() {
@@ -807,11 +825,34 @@ function bindEvents() {
     dashboardLogoutButton.addEventListener("click", logout);
   }
 
+  document.querySelectorAll("[data-section]").forEach((button) => {
+    button.addEventListener("click", () => {
+      state.activeSection = button.dataset.section || "overview";
+      render();
+    });
+  });
+
   const workspaceSearch = document.getElementById("workspaceSearch");
   if (workspaceSearch) {
     workspaceSearch.addEventListener("input", (event) => {
       state.workspaceQuery = event.currentTarget.value;
-      applyWorkspaceFilter();
+      const hint = document.getElementById("workspaceSearchHint");
+      const match = resolveWorkspaceSection(state.workspaceQuery);
+      if (hint) {
+        hint.textContent = match
+          ? `Press Enter to open ${match.label}`
+          : "Use quick jump to open a workspace section instantly";
+      }
+    });
+
+    workspaceSearch.addEventListener("keydown", (event) => {
+      if (event.key !== "Enter") return;
+      event.preventDefault();
+      const match = resolveWorkspaceSection(workspaceSearch.value);
+      if (!match) return;
+      state.workspaceQuery = workspaceSearch.value;
+      state.activeSection = match.key;
+      render();
     });
   }
 
