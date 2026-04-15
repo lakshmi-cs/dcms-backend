@@ -346,6 +346,86 @@ function overviewCardMarkup(sectionKey, title, detail, metricLabel, metricValue)
   `;
 }
 
+function appImpactCardMarkup(title, subtitle, body, items = []) {
+  return `
+    <article class="glass-card panel-card app-impact-card">
+      <div class="section-row compact">
+        <div>
+          <p class="eyebrow">Student app link</p>
+          <h3>${escapeHtml(title)}</h3>
+        </div>
+      </div>
+      <p class="panel-copy">${escapeHtml(subtitle)}</p>
+      ${items.length
+        ? `<div class="app-impact-list">
+            ${items
+              .map(
+                (item) => `
+                  <div class="app-impact-item">
+                    <span>${escapeHtml(item.label)}</span>
+                    <strong>${escapeHtml(item.value)}</strong>
+                  </div>
+                `,
+              )
+              .join("")}
+          </div>`
+        : ""}
+      <p class="app-impact-body">${escapeHtml(body)}</p>
+    </article>
+  `;
+}
+
+function menuPreviewMarkup(menus) {
+  return `
+    <article class="glass-card panel-card app-preview-card">
+      <div class="section-row compact">
+        <div>
+          <p class="eyebrow">App preview</p>
+          <h3>Menu tab snapshot</h3>
+        </div>
+      </div>
+      <div class="app-preview-list">
+        ${menus
+          .map(
+            (menu) => `
+              <div class="app-preview-item">
+                <strong>${escapeHtml(menu.mealName)}</strong>
+                <span>${escapeHtml((menu.items || []).slice(0, 3).join(", ") || "No items published yet")}</span>
+              </div>
+            `,
+          )
+          .join("")}
+      </div>
+    </article>
+  `;
+}
+
+function newsPreviewMarkup(news) {
+  const visibleNews = news.filter((item) => item.status === "published").slice(0, 4);
+  return `
+    <article class="glass-card panel-card app-preview-card">
+      <div class="section-row compact">
+        <div>
+          <p class="eyebrow">App preview</p>
+          <h3>News feed snapshot</h3>
+        </div>
+      </div>
+      <div class="app-preview-list">
+        ${(visibleNews.length ? visibleNews : news.slice(0, 4))
+          .map(
+            (item) => `
+              <div class="app-preview-item">
+                <strong>${escapeHtml(item.title || "Announcement")}</strong>
+                <span>${escapeHtml(item.status || "published")} Â· ${escapeHtml(formatDateTime(item.publishAt))}</span>
+              </div>
+            `,
+          )
+          .join("") || `<div class="empty-card">No announcement preview available yet.</div>`}
+      </div>
+    </article>
+  `;
+}
+
 function pageHeaderMarkup(eyebrow, title, description, actionsMarkup = "", detailMarkup = "") {
   return `
     <section class="content-header glass-card page-view-header">
@@ -555,6 +635,18 @@ function dashboardMarkup() {
     )}
     <section class="module-section">
       <div class="content-grid">
+        ${appImpactCardMarkup(
+          "Meal windows and QR flow",
+          "These settings affect the student app coupon timing and cafeteria QR operations.",
+          "Students can only generate meal coupons inside active meal windows, and staff validate those QR tokens against the same live backend.",
+          [
+            { label: "Active meal", value: liveMealLabel },
+            { label: "Meal window", value: liveMealDetail },
+            { label: "App surface", value: "Home tab + QR generation" },
+          ],
+        )}
+      </div>
+      <div class="content-grid">
         <article class="glass-card panel-card">
           <div class="section-row">
             <div>
@@ -611,17 +703,32 @@ function dashboardMarkup() {
       `Student app reads these items from the shared backend after refresh.`,
     )}
     <section class="module-section">
-      <article class="glass-card panel-card">
-        <div class="section-row">
-          <div>
-            <p class="eyebrow">Menu board</p>
-            <h3>Today's menu</h3>
+      <div class="content-grid content-grid--sidebar">
+        <article class="glass-card panel-card">
+          <div class="section-row">
+            <div>
+              <p class="eyebrow">Menu board</p>
+              <h3>Today's menu</h3>
+            </div>
           </div>
+          <form id="menuForm" class="stacked-form">
+            ${menuEditors(menus)}
+          </form>
+        </article>
+        <div class="page-aside">
+          ${appImpactCardMarkup(
+            "Menu tab sync",
+            "Everything saved here appears in the student app menu tab for today's date.",
+            "Students see breakfast, lunch, and dinner items directly from this backend payload after their app refreshes or reopens.",
+            [
+              { label: "Date", value: content.serverDate || "Today" },
+              { label: "Menus ready", value: String(stats.menusConfigured || 0) },
+              { label: "App tab", value: "Menu" },
+            ],
+          )}
+          ${menuPreviewMarkup(menus)}
         </div>
-        <form id="menuForm" class="stacked-form">
-          ${menuEditors(menus)}
-        </form>
-      </article>
+      </div>
     </section>
   `;
   const newsPage = `
@@ -689,6 +796,17 @@ function dashboardMarkup() {
           </form>
         </article>
         <article class="news-column">
+          ${appImpactCardMarkup(
+            "News feed sync",
+            "This page controls what students read in the app news feed.",
+            "Only published items whose publish time has started are visible to students. Draft items stay hidden until you publish them.",
+            [
+              { label: "Published", value: String(stats.publishedNews || 0) },
+              { label: "App tab", value: "News" },
+              { label: "Visibility", value: "Published + time reached" },
+            ],
+          )}
+          ${newsPreviewMarkup(news)}
           ${newsCards(news)}
         </article>
       </section>
@@ -703,20 +821,34 @@ function dashboardMarkup() {
       `Use operator name plus the student token for a proper redemption record.`,
     )}
     <section class="module-section">
-      <article class="glass-card panel-card">
-        <form id="validatorForm" class="stacked-form">
-          <label>
-            <span>Operator name</span>
-            <input type="text" name="operatorName" placeholder="Cafeteria staff name" />
-          </label>
-          <label>
-            <span>Student QR token</span>
-            <textarea name="token" rows="6" placeholder="Paste or scan the full QR token here"></textarea>
-          </label>
-          <button type="submit" class="primary-button">Validate And Redeem</button>
-        </form>
-        ${validatorResultMarkup()}
-      </article>
+      <div class="content-grid content-grid--sidebar">
+        <article class="glass-card panel-card">
+          <form id="validatorForm" class="stacked-form">
+            <label>
+              <span>Operator name</span>
+              <input type="text" name="operatorName" placeholder="Cafeteria staff name" />
+            </label>
+            <label>
+              <span>Student QR token</span>
+              <textarea name="token" rows="6" placeholder="Paste or scan the full QR token here"></textarea>
+            </label>
+            <button type="submit" class="primary-button">Validate And Redeem</button>
+          </form>
+          ${validatorResultMarkup()}
+        </article>
+        <div class="page-aside">
+          ${appImpactCardMarkup(
+            "Student QR sync",
+            "The token validated here comes directly from the student app QR generation flow.",
+            "If the student app generated the QR during an active meal window, this page can verify and redeem it against the shared backend immediately.",
+            [
+              { label: "QR issued today", value: String(stats.qrIssuedToday || 0) },
+              { label: "Redeemed today", value: String(stats.qrRedeemedToday || 0) },
+              { label: "App flow", value: "Home tab coupon QR" },
+            ],
+          )}
+        </div>
+      </div>
     </section>
   `;
   const activityPage = `
@@ -728,9 +860,23 @@ function dashboardMarkup() {
       `Table updates after live admin actions and dashboard refresh.`,
     )}
     <section class="module-section">
-      <article class="glass-card panel-card">
-        ${redemptionsMarkup(redemptions)}
-      </article>
+      <div class="content-grid content-grid--sidebar">
+        <article class="glass-card panel-card">
+          ${redemptionsMarkup(redemptions)}
+        </article>
+        <div class="page-aside">
+          ${appImpactCardMarkup(
+            "App coupon activity",
+            "This log reflects coupon activity generated from the student app and redeemed by admin-side validation.",
+            "Use this page to confirm whether the student app flow is working end to end for issuance and redemption.",
+            [
+              { label: "Issued", value: String(stats.qrIssuedToday || 0) },
+              { label: "Redeemed", value: String(stats.qrRedeemedToday || 0) },
+              { label: "Linked flow", value: "App QR + admin validation" },
+            ],
+          )}
+        </div>
+      </div>
     </section>
   `;
   const pageMarkupBySection = {
