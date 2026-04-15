@@ -752,6 +752,16 @@ textarea {
   gap: 20px;
 }
 
+.content-grid--sidebar {
+  grid-template-columns: minmax(0, 1.15fr) minmax(320px, 0.85fr);
+}
+
+.page-aside {
+  display: grid;
+  gap: 18px;
+  align-content: start;
+}
+
 .module-section {
   display: grid;
   gap: 16px;
@@ -781,8 +791,51 @@ textarea {
   margin-bottom: 18px;
 }
 
+.section-row.compact {
+  margin-bottom: 12px;
+}
+
 .section-row h3 {
   font-size: 1.55rem;
+}
+
+.app-impact-card,
+.app-preview-card {
+  padding: 24px;
+}
+
+.app-impact-list,
+.app-preview-list {
+  display: grid;
+  gap: 12px;
+  margin-top: 16px;
+}
+
+.app-impact-item,
+.app-preview-item {
+  display: grid;
+  gap: 6px;
+  padding: 14px 16px;
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.app-impact-item span,
+.app-preview-item span {
+  color: var(--muted);
+  line-height: 1.5;
+}
+
+.app-impact-item strong,
+.app-preview-item strong {
+  font-size: 0.98rem;
+}
+
+.app-impact-body {
+  margin: 16px 0 0;
+  color: var(--muted);
+  line-height: 1.7;
 }
 
 .meal-row,
