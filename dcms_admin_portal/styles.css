@@ -391,11 +391,13 @@ textarea {
 .dashboard-nav-link {
   display: grid;
   gap: 4px;
+  width: 100%;
   padding: 14px 16px;
   border-radius: 18px;
   border: 1px solid rgba(255, 255, 255, 0.08);
   background: rgba(255, 255, 255, 0.04);
   color: var(--text);
+  text-align: left;
   text-decoration: none;
   transition: transform 180ms ease, border-color 180ms ease, background 180ms ease;
 }
@@ -404,6 +406,12 @@ textarea {
   transform: translateY(-1px);
   border-color: rgba(125, 211, 252, 0.32);
   background: rgba(125, 211, 252, 0.08);
+}
+
+.dashboard-nav-link.is-active {
+  border-color: rgba(125, 211, 252, 0.42);
+  background: rgba(125, 211, 252, 0.14);
+  box-shadow: inset 0 0 0 1px rgba(125, 211, 252, 0.08);
 }
 
 .dashboard-nav-link small {
@@ -526,6 +534,39 @@ textarea {
   display: flex;
   flex-wrap: wrap;
   gap: 10px;
+}
+
+.overview-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 16px;
+}
+
+.overview-card {
+  padding: 22px;
+  display: grid;
+  gap: 14px;
+}
+
+.overview-card span {
+  color: var(--muted);
+  font-size: 0.82rem;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+}
+
+.overview-card strong {
+  font-size: 1.6rem;
+}
+
+.overview-card p {
+  margin: 0;
+  color: var(--muted);
+  line-height: 1.6;
+}
+
+.overview-card .secondary-button {
+  justify-self: start;
 }
 
 .search-hint {
@@ -988,7 +1029,7 @@ code {
 }
 
 @media (max-width: 1180px) {
-  .dashboard-shell,
+  .overview-grid,
   .stats-grid {
     grid-template-columns: repeat(3, minmax(0, 1fr));
   }
@@ -1025,6 +1066,7 @@ code {
     align-items: flex-start;
   }
 
+  .overview-grid,
   .stats-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
@@ -1061,6 +1103,7 @@ code {
 }
 
 @media (max-width: 560px) {
+  .overview-grid,
   .stats-grid {
     grid-template-columns: 1fr;
   }
