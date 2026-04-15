@@ -54,20 +54,22 @@ const shellTopbar = document.querySelector(".topbar");
 const pageShell = document.querySelector(".page-shell");
 
 const WORKSPACE_SECTIONS = [
-  { key: "overview", file: "index.html", label: "Dashboard", detail: "Live overview and service health", terms: ["dashboard", "overview", "home", "summary"] },
-  { key: "service", file: "service.html", label: "Service Control", detail: "Hours and counter QR", terms: ["service", "meal", "windows", "schedule", "hours", "qr", "counter"] },
-  { key: "menu", file: "menu.html", label: "Menu Publishing", detail: "Daily meal items", terms: ["menu", "publishing", "breakfast", "lunch", "dinner", "meals"] },
-  { key: "news", file: "news.html", label: "News Centre", detail: "Student announcements", terms: ["news", "announcement", "broadcast", "draft", "published"] },
-  { key: "validation", file: "validation.html", label: "QR Validation", detail: "Redeem and verify", terms: ["validation", "redeem", "coupon", "token", "operator"] },
-  { key: "activity", file: "activity.html", label: "Activity Log", detail: "Recent redemptions", terms: ["activity", "log", "redemption", "history", "audit"] },
+  { key: "overview", label: "Dashboard", detail: "Live overview and service health", terms: ["dashboard", "overview", "home", "summary"] },
+  { key: "service", label: "Service Control", detail: "Hours and counter QR", terms: ["service", "meal", "windows", "schedule", "hours", "qr", "counter"] },
+  { key: "menu", label: "Menu Publishing", detail: "Daily meal items", terms: ["menu", "publishing", "breakfast", "lunch", "dinner", "meals"] },
+  { key: "news", label: "News Centre", detail: "Student announcements", terms: ["news", "announcement", "broadcast", "draft", "published"] },
+  { key: "validation", label: "QR Validation", detail: "Redeem and verify", terms: ["validation", "redeem", "coupon", "token", "operator"] },
+  { key: "activity", label: "Activity Log", detail: "Recent redemptions", terms: ["activity", "log", "redemption", "history", "audit"] },
 ];
 
-function getCurrentPageKey() {
-  const fromData = document.body.dataset.page;
-  if (fromData) return fromData;
+function pageUrl(sectionKey) {
+  return sectionKey === "overview" ? "./index.html" : `./index.html?page=${encodeURIComponent(sectionKey)}`;
+}
 
-  const pathname = window.location.pathname.split("/").pop() || "index.html";
-  const matched = WORKSPACE_SECTIONS.find((section) => section.file === pathname);
+function getCurrentPageKey() {
+  const page = new URLSearchParams(window.location.search).get("page");
+  if (!page) return "overview";
+  const matched = WORKSPACE_SECTIONS.find((section) => section.key === page);
   return matched ? matched.key : "overview";
 }
 
@@ -318,7 +320,7 @@ function detailItemMarkup(label, value) {
 
 function navLinkMarkup(section) {
   return `
-    <a class="dashboard-nav-link ${state.currentPage === section.key ? "is-active" : ""}" href="./${escapeHtml(section.file)}">
+    <a class="dashboard-nav-link ${state.currentPage === section.key ? "is-active" : ""}" href="${escapeHtml(pageUrl(section.key))}">
       <strong>${escapeHtml(section.label)}</strong>
       <small>${escapeHtml(section.detail)}</small>
     </a>
@@ -334,13 +336,12 @@ function resolveWorkspaceSection(query) {
 }
 
 function overviewCardMarkup(sectionKey, title, detail, metricLabel, metricValue) {
-  const section = WORKSPACE_SECTIONS.find((item) => item.key === sectionKey);
   return `
     <article class="overview-card glass-card">
       <span>${escapeHtml(metricLabel)}</span>
       <strong>${escapeHtml(metricValue)}</strong>
       <p>${escapeHtml(detail)}</p>
-      <a class="secondary-button link-button" href="./${escapeHtml(section ? section.file : "index.html")}">Open ${escapeHtml(title)}</a>
+      <a class="secondary-button link-button" href="${escapeHtml(pageUrl(sectionKey))}">Open ${escapeHtml(title)}</a>
     </article>
   `;
 }
@@ -515,8 +516,8 @@ function dashboardMarkup() {
   const resolvedQuerySection = resolveWorkspaceSection(state.workspaceQuery);
   state.currentPage = getCurrentPageKey();
   const quickJumpActions = `
-    <a class="secondary-button link-button" href="./menu.html">Open Menu</a>
-    <a class="secondary-button link-button" href="./news.html">Open News</a>
+    <a class="secondary-button link-button" href="${escapeHtml(pageUrl("menu"))}">Open Menu</a>
+    <a class="secondary-button link-button" href="${escapeHtml(pageUrl("news"))}">Open News</a>
   `;
   const dashboardPage = `
     ${pageHeaderMarkup(
@@ -858,7 +859,7 @@ function bindEvents() {
       const match = resolveWorkspaceSection(workspaceSearch.value);
       if (!match) return;
       state.workspaceQuery = workspaceSearch.value;
-      window.location.href = `./${match.file}`;
+      window.location.href = pageUrl(match.key);
     });
   }
 
