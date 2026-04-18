@@ -41,6 +41,7 @@ const state = {
   content: null,
   sessionQr: null,
   validationResult: null,
+  sidebarOpen: false,
   workspaceQuery: "",
   serverStatusMessage: "Backend connection pending",
   serverStatusTone: "neutral",
@@ -220,6 +221,7 @@ function logout() {
   state.content = null;
   state.sessionQr = null;
   state.validationResult = null;
+  state.sidebarOpen = false;
   state.loading = false;
   localStorage.removeItem(AUTH_STORAGE_KEY);
   render();
@@ -610,9 +612,6 @@ function heroMetricMarkup(label, value, detail, modifier = "", accentMarkup = ""
   `;
 }
 
-  `;
-}
-
 function workflowTimelineMarkup(activeMeal, stats) {
   const activeIndex = activeMeal.isActive
     ? 3
@@ -742,26 +741,30 @@ function dashboardMarkup() {
     <a class="secondary-button link-button" href="${escapeHtml(pageUrl("news"))}">Open News</a>
   `;
   const dashboardPage = `
-    <section class="control-room-overview">
-      <div class="hero-metrics-layout">
-        <div class="hero-metrics-grid">
-          ${heroMetricMarkup(
-            "Live meal status",
-            activeMeal.isActive ? activeMeal.mealName : "Closed",
-            activeMeal.timeLabel || "Waiting for next window",
-            "hero-metric-card--spotlight",
-            `<span class="status-ring"></span>`,
-          )}
-          ${heroMetricMarkup("Menus ready", String(stats.menusConfigured || 0), "Published for today's service")}
-          ${heroMetricMarkup("News published", String(stats.publishedNews || 0), "Visible to students")}
-          ${heroMetricMarkup("QR issued today", String(stats.qrIssuedToday || 0), "Student coupons generated", "hero-metric-card--wave", `<span class="metric-wave"></span>`)}
+    <section class="control-room-overview simple-overview">
+      <section class="simple-overview-header glass-card">
+        <div>
+          <p class="eyebrow">Dashboard</p>
+          <h2>AIMST Cafeteria Admin</h2>
+          <p class="panel-copy">A cleaner overview of today's cafeteria operations, student-facing content, and recent QR activity.</p>
         </div>
-        ${quickActionsMarkup()}
+      </section>
+
+      <div class="hero-metrics-grid simple-hero-grid">
+        ${heroMetricMarkup(
+          "Live meal status",
+          activeMeal.isActive ? activeMeal.mealName : "Closed",
+          activeMeal.timeLabel || "Waiting for next window",
+          "hero-metric-card--spotlight",
+          `<span class="status-ring"></span>`,
+        )}
+        ${heroMetricMarkup("Menus ready", String(stats.menusConfigured || 0), "Published for today's service")}
+        ${heroMetricMarkup("News published", String(stats.publishedNews || 0), "Visible to students")}
       </div>
 
       ${workflowTimelineMarkup(activeMeal, stats)}
 
-      <section class="focus-insights-grid">
+      <section class="focus-insights-grid simple-focus-grid">
         <article class="glass-card focus-panel">
           <p class="eyebrow">Current meal</p>
           <h3>${escapeHtml(activeMeal.isActive ? activeMeal.mealName : "No active meal window")}</h3>
@@ -805,7 +808,6 @@ function dashboardMarkup() {
             <p class="eyebrow">Recent activity</p>
             <h3>Recent Operations Feed</h3>
           </div>
-          <a class="secondary-button link-button" href="${escapeHtml(pageUrl("activity"))}">Open Activity Log</a>
         </div>
         ${activityFeedMarkup(news, redemptions)}
       </section>
@@ -1076,7 +1078,8 @@ function dashboardMarkup() {
   };
   return `
     <div class="dashboard-shell">
-      <aside class="dashboard-sidebar">
+      <button class="sidebar-overlay ${state.sidebarOpen ? "is-open" : ""}" id="sidebarOverlay" type="button" aria-label="Close navigation"></button>
+      <aside class="dashboard-sidebar ${state.sidebarOpen ? "is-open" : ""}">
         <div class="dashboard-brand glass-card">
           <div class="brand-mark">DC</div>
           <div>
@@ -1111,6 +1114,7 @@ function dashboardMarkup() {
 
       <div class="dashboard-stage">
         <header class="dashboard-toolbar glass-card">
+          <button class="toolbar-icon-button" id="toggleSidebarButton" type="button" aria-label="Open navigation menu">â‰¡</button>
           <label class="toolbar-search">
             <input
               id="workspaceSearch"
@@ -1123,7 +1127,6 @@ function dashboardMarkup() {
             <span class="toolbar-chip ${escapeHtml(state.serverStatusTone)}" id="workspaceServerStatus">${escapeHtml(state.serverStatusMessage)}</span>
             <span class="toolbar-chip subtle">${escapeHtml(content.timeZone || "Asia/Kuala_Lumpur")}</span>
             <button class="secondary-button toolbar-button" id="refreshDashboardButton" type="button">Refresh</button>
-            <button class="ghost-button toolbar-button" id="dashboardLogoutButton" type="button">Logout</button>
             <div class="profile-chip">
               <div class="profile-avatar">A</div>
               <div>
@@ -1171,6 +1174,22 @@ function bindEvents() {
   const dashboardLogoutButton = document.getElementById("dashboardLogoutButton");
   if (dashboardLogoutButton) {
     dashboardLogoutButton.addEventListener("click", logout);
+  }
+
+  const toggleSidebarButton = document.getElementById("toggleSidebarButton");
+  if (toggleSidebarButton) {
+    toggleSidebarButton.addEventListener("click", () => {
+      state.sidebarOpen = !state.sidebarOpen;
+      render();
+    });
+  }
+
+  const sidebarOverlay = document.getElementById("sidebarOverlay");
+  if (sidebarOverlay) {
+    sidebarOverlay.addEventListener("click", () => {
+      state.sidebarOpen = false;
+      render();
+    });
   }
 
   const workspaceSearch = document.getElementById("workspaceSearch");
