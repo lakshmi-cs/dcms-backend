@@ -485,6 +485,7 @@ textarea {
   border-radius: 16px;
   background: linear-gradient(180deg, rgba(14, 16, 48, 0.98), rgba(16, 18, 56, 0.96));
   box-shadow: 0 12px 28px rgba(9, 11, 38, 0.45);
+  overflow: visible;
 }
 
 .toolbar-icon-button {
@@ -571,8 +572,11 @@ textarea {
 }
 
 .profile-chip-button {
+  width: 100%;
+  border: 1px solid rgba(255, 255, 255, 0.08);
   cursor: pointer;
   color: inherit;
+  text-align: left;
 }
 
 .profile-chip-button:hover {
