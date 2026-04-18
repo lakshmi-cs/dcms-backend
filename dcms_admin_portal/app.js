@@ -127,6 +127,40 @@ function showFlash(message, tone = "info") {
   }, 3200);
 }
 
+function syncProfileMenu() {
+  const profileMenu = document.querySelector(".profile-menu");
+  const profileMenuButton = document.getElementById("profileMenuButton");
+  const profileDropdown = document.querySelector(".profile-dropdown");
+
+  if (profileMenu) {
+    profileMenu.classList.toggle("is-open", state.profileMenuOpen);
+  }
+
+  if (profileMenuButton) {
+    profileMenuButton.setAttribute("aria-expanded", state.profileMenuOpen ? "true" : "false");
+  }
+
+  if (profileDropdown) {
+    profileDropdown.classList.toggle("is-open", state.profileMenuOpen);
+  }
+}
+
+function setProfileMenuOpen(isOpen) {
+  state.profileMenuOpen = Boolean(isOpen);
+  syncProfileMenu();
+}
+
+function handleDocumentClick(event) {
+  if (!state.profileMenuOpen) return;
+
+  const profileMenu = document.querySelector(".profile-menu");
+  if (profileMenu && profileMenu.contains(event.target)) {
+    return;
+  }
+
+  setProfileMenuOpen(false);
+}
+
 async function api(path, options = {}) {
   const request = {
     method: options.method || "GET",
@@ -1347,6 +1381,7 @@ function render() {
   }
   appRoot.innerHTML = state.token ? dashboardMarkup() : loginMarkup();
   bindEvents();
+  syncProfileMenu();
   renderSessionQr();
 }
 
@@ -1370,11 +1405,14 @@ function bindEvents() {
 
   const profileMenuButton = document.getElementById("profileMenuButton");
   if (profileMenuButton) {
-    profileMenuButton.addEventListener("click", () => {
-      state.profileMenuOpen = !state.profileMenuOpen;
-      render();
+    profileMenuButton.addEventListener("click", (event) => {
+      event.stopPropagation();
+      setProfileMenuOpen(!state.profileMenuOpen);
     });
   }
+
+  document.removeEventListener("click", handleDocumentClick);
+  document.addEventListener("click", handleDocumentClick);
 
   const toggleSidebarButton = document.getElementById("toggleSidebarButton");
   if (toggleSidebarButton) {
