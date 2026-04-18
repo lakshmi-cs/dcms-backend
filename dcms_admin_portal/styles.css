@@ -556,6 +556,10 @@ textarea {
   min-height: 44px;
 }
 
+.profile-menu {
+  position: relative;
+}
+
 .profile-chip {
   display: flex;
   align-items: center;
@@ -564,6 +568,16 @@ textarea {
   border-radius: 999px;
   border: 1px solid rgba(255, 255, 255, 0.08);
   background: rgba(255, 255, 255, 0.03);
+}
+
+.profile-chip-button {
+  cursor: pointer;
+  color: inherit;
+}
+
+.profile-chip-button:hover {
+  border-color: rgba(125, 211, 252, 0.26);
+  background: rgba(255, 255, 255, 0.06);
 }
 
 .profile-avatar {
@@ -575,6 +589,57 @@ textarea {
   font-weight: 700;
   color: #fff;
   background: linear-gradient(135deg, #5b42f3, #2db0ff);
+}
+
+.profile-caret {
+  color: var(--muted);
+  font-size: 0.95rem;
+  line-height: 1;
+}
+
+.profile-dropdown {
+  position: absolute;
+  top: calc(100% + 10px);
+  right: 0;
+  min-width: 170px;
+  padding: 8px;
+  border-radius: 16px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: linear-gradient(180deg, rgba(14, 16, 48, 0.98), rgba(16, 18, 56, 0.96));
+  box-shadow: 0 18px 34px rgba(8, 10, 36, 0.42);
+  opacity: 0;
+  pointer-events: none;
+  transform: translateY(-6px);
+  transition: opacity 160ms ease, transform 160ms ease;
+  z-index: 12;
+}
+
+.profile-dropdown.is-open {
+  opacity: 1;
+  pointer-events: auto;
+  transform: translateY(0);
+}
+
+.profile-dropdown-item {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  min-height: 44px;
+  padding: 12px 14px;
+  border: 0;
+  border-radius: 12px;
+  background: transparent;
+  color: var(--text);
+  font-weight: 700;
+}
+
+.profile-dropdown-item:hover {
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.profile-dropdown-item.danger {
+  color: var(--danger);
 }
 
 .dashboard-content {
