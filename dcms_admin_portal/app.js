@@ -610,30 +610,6 @@ function heroMetricMarkup(label, value, detail, modifier = "", accentMarkup = ""
   `;
 }
 
-function quickActionsMarkup() {
-  return `
-    <aside class="glass-card actions-card">
-      <div class="actions-card-header">
-        <div>
-          <p class="eyebrow">Quick tools</p>
-          <h3>Actions</h3>
-        </div>
-      </div>
-      <div class="actions-list">
-        <a class="action-chip action-chip--green" href="${escapeHtml(pageUrl("menu"))}">
-          <span class="action-chip-icon">M</span>
-          <span>Publish Menu</span>
-        </a>
-        <a class="action-chip action-chip--emerald" href="${escapeHtml(pageUrl("news"))}">
-          <span class="action-chip-icon">N</span>
-          <span>Open News</span>
-        </a>
-        <a class="action-chip action-chip--amber" href="${escapeHtml(pageUrl("service"))}">
-          <span class="action-chip-icon">S</span>
-          <span>Schedule Announcement</span>
-        </a>
-      </div>
-    </aside>
   `;
 }
 
