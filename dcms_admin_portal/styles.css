@@ -320,17 +320,42 @@ textarea {
 
 .dashboard-shell {
   display: grid;
-  grid-template-columns: 220px minmax(0, 1fr);
+  grid-template-columns: 1fr;
   gap: 14px;
   min-height: calc(100vh - 56px);
 }
 
 .dashboard-sidebar {
-  position: sticky;
-  top: 0;
-  align-self: start;
+  position: fixed;
+  top: 18px;
+  left: 18px;
+  bottom: 18px;
+  width: 240px;
+  z-index: 30;
   display: grid;
   gap: 14px;
+  transform: translateX(-112%);
+  transition: transform 180ms ease;
+}
+
+.dashboard-sidebar.is-open {
+  transform: translateX(0);
+}
+
+.sidebar-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 20;
+  border: 0;
+  background: rgba(5, 8, 25, 0.48);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 180ms ease;
+}
+
+.sidebar-overlay.is-open {
+  opacity: 1;
+  pointer-events: auto;
 }
 
 .dashboard-brand,
@@ -460,6 +485,17 @@ textarea {
   border-radius: 16px;
   background: linear-gradient(180deg, rgba(14, 16, 48, 0.98), rgba(16, 18, 56, 0.96));
   box-shadow: 0 12px 28px rgba(9, 11, 38, 0.45);
+}
+
+.toolbar-icon-button {
+  width: 42px;
+  height: 42px;
+  flex: 0 0 42px;
+  border-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  background: rgba(255, 255, 255, 0.03);
+  color: var(--text);
+  font-size: 1rem;
 }
 
 .toolbar-search {
@@ -611,6 +647,22 @@ textarea {
   gap: 18px;
 }
 
+.simple-overview {
+  gap: 16px;
+}
+
+.simple-overview-header {
+  padding: 20px;
+  border-radius: 16px;
+  background: linear-gradient(180deg, rgba(14, 16, 48, 0.98), rgba(16, 18, 56, 0.96));
+  box-shadow: 0 12px 28px rgba(8, 10, 36, 0.42);
+}
+
+.simple-overview-header h2 {
+  margin: 10px 0 10px;
+  font-size: clamp(1.7rem, 2.6vw, 2.4rem);
+}
+
 .hero-metrics-layout {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 240px;
@@ -621,6 +673,10 @@ textarea {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 14px;
+}
+
+.simple-hero-grid {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
 }
 
 .hero-metric-card {
@@ -831,6 +887,10 @@ textarea {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 16px;
+}
+
+.simple-focus-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
 .focus-panel {
@@ -1455,7 +1515,6 @@ code {
 }
 
 @media (max-width: 1180px) {
-  .hero-metrics-layout,
   .focus-insights-grid {
     grid-template-columns: 1fr;
   }
@@ -1475,10 +1534,6 @@ code {
 
   .dashboard-shell {
     grid-template-columns: 1fr;
-  }
-
-  .dashboard-sidebar {
-    position: static;
   }
 
   .dashboard-toolbar,
@@ -1511,6 +1566,10 @@ code {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
+  .simple-focus-grid {
+    grid-template-columns: 1fr;
+  }
+
   .workflow-line,
   .dashboard-toolbar {
     flex-direction: column;
@@ -1525,6 +1584,10 @@ code {
   .content-shortcuts,
   .hero-links {
     justify-content: flex-start;
+  }
+
+  .dashboard-sidebar {
+    width: min(260px, calc(100vw - 32px));
   }
 
   .meal-row,
