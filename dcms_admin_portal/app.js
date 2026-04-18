@@ -1311,6 +1311,7 @@ function dashboardMarkup() {
           </button>
           <div class="toolbar-actions">
             <button class="secondary-button toolbar-button" id="refreshDashboardButton" type="button">Refresh</button>
+            <button class="danger-button toolbar-button" id="dashboardLogoutButton" type="button">Log Out</button>
             <div class="profile-chip">
               <div class="profile-avatar">A</div>
               <div>
