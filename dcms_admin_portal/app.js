@@ -1114,7 +1114,13 @@ function dashboardMarkup() {
 
       <div class="dashboard-stage">
         <header class="dashboard-toolbar glass-card">
-          <button class="toolbar-icon-button" id="toggleSidebarButton" type="button" aria-label="Open navigation menu">â‰¡</button>
+          <button class="toolbar-icon-button" id="toggleSidebarButton" type="button" aria-label="Open navigation menu">
+            <span class="hamburger-icon" aria-hidden="true">
+              <span></span>
+              <span></span>
+              <span></span>
+            </span>
+          </button>
           <label class="toolbar-search">
             <input
               id="workspaceSearch"
