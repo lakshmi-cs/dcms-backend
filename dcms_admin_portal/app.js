@@ -54,7 +54,7 @@ const shellTopbar = document.querySelector(".topbar");
 const pageShell = document.querySelector(".page-shell");
 
 const WORKSPACE_SECTIONS = [
-  { key: "overview", label: "Dashboard", detail: "Live overview and service health", terms: ["dashboard", "overview", "home", "summary"] },
+  { key: "overview", label: "Home", detail: "Live overview and service health", terms: ["dashboard", "overview", "home", "summary"] },
   { key: "service", label: "Service Control", detail: "Hours and counter QR", terms: ["service", "meal", "windows", "schedule", "hours", "qr", "counter"] },
   { key: "menu", label: "Menu Publishing", detail: "Daily meal items", terms: ["menu", "publishing", "breakfast", "lunch", "dinner", "meals"] },
   { key: "news", label: "News Centre", detail: "Student announcements", terms: ["news", "announcement", "broadcast", "draft", "published"] },
@@ -309,6 +309,19 @@ function statCardMarkup(label, value, detail) {
   `;
 }
 
+function formatRelativeTime(value) {
+  if (!value) return "just now";
+
+  const parsed = new Date(String(value).replace(" ", "T"));
+  if (Number.isNaN(parsed.getTime())) return "recently";
+
+  const seconds = Math.max(0, Math.floor((Date.now() - parsed.getTime()) / 1000));
+  if (seconds < 60) return `${seconds || 1}s ago`;
+  if (seconds < 3600) return `${Math.floor(seconds / 60)}m ago`;
+  if (seconds < 86400) return `${Math.floor(seconds / 3600)}h ago`;
+  return `${Math.floor(seconds / 86400)}d ago`;
+}
+
 function detailItemMarkup(label, value) {
   return `
     <div class="detail-item">
@@ -318,11 +331,23 @@ function detailItemMarkup(label, value) {
   `;
 }
 
+const NAV_ICON_LABELS = {
+  overview: "H",
+  service: "S",
+  menu: "M",
+  news: "N",
+  validation: "Q",
+  activity: "A",
+};
+
 function navLinkMarkup(section) {
   return `
-    <a class="dashboard-nav-link ${state.currentPage === section.key ? "is-active" : ""}" href="${escapeHtml(pageUrl(section.key))}">
-      <strong>${escapeHtml(section.label)}</strong>
-      <small>${escapeHtml(section.detail)}</small>
+    <a class="dashboard-nav-link ${state.currentPage === section.key ? "is-active" : ""}" data-key="${escapeHtml(section.key)}" href="${escapeHtml(pageUrl(section.key))}">
+      <span class="nav-icon">${escapeHtml(NAV_ICON_LABELS[section.key] || section.label.charAt(0))}</span>
+      <div class="nav-copy">
+        <strong>${escapeHtml(section.label)}</strong>
+        <small>${escapeHtml(section.detail)}</small>
+      </div>
     </a>
   `;
 }
@@ -571,6 +596,147 @@ function validatorResultMarkup() {
   `;
 }
 
+function heroMetricMarkup(label, value, detail, modifier = "", accentMarkup = "") {
+  return `
+    <article class="hero-metric-card glass-card ${modifier}">
+      <div class="hero-metric-label-row">
+        <span>${escapeHtml(label)}</span>
+        <span class="metric-arrow">></span>
+      </div>
+      <strong>${escapeHtml(value)}</strong>
+      <p>${escapeHtml(detail)}</p>
+      ${accentMarkup}
+    </article>
+  `;
+}
+
+function quickActionsMarkup() {
+  return `
+    <aside class="glass-card actions-card">
+      <div class="actions-card-header">
+        <div>
+          <p class="eyebrow">Quick tools</p>
+          <h3>Actions</h3>
+        </div>
+      </div>
+      <div class="actions-list">
+        <a class="action-chip action-chip--green" href="${escapeHtml(pageUrl("menu"))}">
+          <span class="action-chip-icon">M</span>
+          <span>Publish Menu</span>
+        </a>
+        <a class="action-chip action-chip--emerald" href="${escapeHtml(pageUrl("news"))}">
+          <span class="action-chip-icon">N</span>
+          <span>Open News</span>
+        </a>
+        <a class="action-chip action-chip--amber" href="${escapeHtml(pageUrl("service"))}">
+          <span class="action-chip-icon">S</span>
+          <span>Schedule Announcement</span>
+        </a>
+      </div>
+    </aside>
+  `;
+}
+
+function workflowTimelineMarkup(activeMeal, stats) {
+  const activeIndex = activeMeal.isActive
+    ? 3
+    : (stats.menusConfigured || 0) > 0
+      ? 2
+      : 0;
+
+  const steps = [
+    "Hours Set",
+    "QR Generated",
+    "Menu Published",
+    "Window Open",
+    "Window Closed",
+  ];
+
+  return `
+    <section class="glass-card workflow-panel">
+      <div class="section-row compact workflow-header">
+        <div>
+          <p class="eyebrow">Service readiness</p>
+          <h3>Meal Window Workflow Timeline</h3>
+        </div>
+        <span class="workflow-chip">Current step</span>
+      </div>
+      <div class="workflow-line">
+        ${steps
+          .map((step, index) => `
+            <div class="workflow-step ${index <= activeIndex ? "is-complete" : ""} ${index === activeIndex ? "is-current" : ""}">
+              <span class="workflow-dot"></span>
+              <strong>${escapeHtml(step)}</strong>
+            </div>
+          `)
+          .join("")}
+      </div>
+    </section>
+  `;
+}
+
+function menuBarsMarkup(menus) {
+  const safeMenus = menus.map((menu) => ({
+    label: menu.mealName || "Meal",
+    value: (menu.items || []).length,
+  }));
+  const maxValue = Math.max(1, ...safeMenus.map((item) => item.value));
+
+  return `
+    <div class="mini-bars">
+      ${safeMenus
+        .map((item, index) => `
+          <div class="mini-bar-item">
+            <span
+              class="mini-bar-fill mini-bar-fill--${index + 1}"
+              style="height:${Math.max(18, (item.value / maxValue) * 86)}px"
+            ></span>
+            <strong>${escapeHtml(String(item.value))}</strong>
+            <small>${escapeHtml(item.label)}</small>
+          </div>
+        `)
+        .join("")}
+    </div>
+  `;
+}
+
+function activityFeedMarkup(news, redemptions) {
+  const operations = [
+    ...news.slice(0, 2).map((item) => ({
+      icon: "N",
+      tone: "news",
+      title: `${item.title || "Announcement"} published`,
+      meta: formatRelativeTime(item.publishAt),
+    })),
+    ...redemptions.slice(0, 3).map((item) => ({
+      icon: "Q",
+      tone: "qr",
+      title: `${item.studentId || "Student"} ${item.status || "updated"} ${item.couponType || "coupon"}`,
+      meta: formatRelativeTime(item.redeemedAt || item.issuedAt),
+    })),
+  ].slice(0, 5);
+
+  if (!operations.length) {
+    return `<div class="empty-card">Recent admin actions will appear here after menu, news, and QR activity starts.</div>`;
+  }
+
+  return `
+    <div class="activity-feed">
+      ${operations
+        .map((item) => `
+          <div class="activity-item">
+            <span class="activity-icon activity-icon--${escapeHtml(item.tone)}">${escapeHtml(item.icon)}</span>
+            <div class="activity-copy">
+              <strong>${escapeHtml(item.title)}</strong>
+              <span>${escapeHtml(item.meta)}</span>
+            </div>
+          </div>
+        `)
+        .join("")}
+    </div>
+  `;
+}
+
 function dashboardMarkup() {
   if (state.loading && (!state.dashboard || !state.content)) {
     return `
@@ -600,28 +766,73 @@ function dashboardMarkup() {
     <a class="secondary-button link-button" href="${escapeHtml(pageUrl("news"))}">Open News</a>
   `;
   const dashboardPage = `
-    ${pageHeaderMarkup(
-      "Dashboard overview",
-      config.portalName || "AIMST DCMS Control Room",
-      "Open one workspace at a time from the sidebar. Use Dashboard for a quick summary, then jump into Service, Menu, News, Validation, or Activity as separate admin pages.",
-      quickJumpActions,
-      resolvedQuerySection
-        ? `Press Enter to open ${escapeHtml(resolvedQuerySection.label)}`
-        : "Use quick jump to open a workspace section instantly",
-    )}
-    <section class="stats-grid">
-      ${statCardMarkup("Live meal status", activeMeal.isActive ? activeMeal.mealName : "Closed", activeMeal.timeLabel || "Waiting for next window")}
-      ${statCardMarkup("Menus ready", stats.menusConfigured || 0, "Published for today's service")}
-      ${statCardMarkup("News published", stats.publishedNews || 0, "Visible to students")}
-      ${statCardMarkup("QR issued today", stats.qrIssuedToday || 0, "Student coupons generated")}
-      ${statCardMarkup("QR redeemed today", stats.qrRedeemedToday || 0, "Counter scans completed")}
-    </section>
-    <section class="overview-grid">
-      ${overviewCardMarkup("service", "Service Control", "Update service hours and generate the counter QR before meal windows begin.", "Current meal", liveMealLabel)}
-      ${overviewCardMarkup("menu", "Menu Publishing", "Publish breakfast, lunch, and dinner items students will see in the app.", "Menus ready", stats.menusConfigured || 0)}
-      ${overviewCardMarkup("news", "News Centre", "Create and schedule announcements without mixing them into other tasks.", "News live", stats.publishedNews || 0)}
-      ${overviewCardMarkup("validation", "QR Validation", "Scan or paste student QR tokens and redeem them against the live backend.", "Redeemed today", stats.qrRedeemedToday || 0)}
-      ${overviewCardMarkup("activity", "Activity Log", "Review recent coupon history in a dedicated audit view.", "Issued today", stats.qrIssuedToday || 0)}
+    <section class="control-room-overview">
+      <div class="hero-metrics-layout">
+        <div class="hero-metrics-grid">
+          ${heroMetricMarkup(
+            "Live meal status",
+            activeMeal.isActive ? activeMeal.mealName : "Closed",
+            activeMeal.timeLabel || "Waiting for next window",
+            "hero-metric-card--spotlight",
+            `<span class="status-ring"></span>`,
+          )}
+          ${heroMetricMarkup("Menus ready", String(stats.menusConfigured || 0), "Published for today's service")}
+          ${heroMetricMarkup("News published", String(stats.publishedNews || 0), "Visible to students")}
+          ${heroMetricMarkup("QR issued today", String(stats.qrIssuedToday || 0), "Student coupons generated", "hero-metric-card--wave", `<span class="metric-wave"></span>`)}
+        </div>
+        ${quickActionsMarkup()}
+      </div>
+
+      ${workflowTimelineMarkup(activeMeal, stats)}
+
+      <section class="focus-insights-grid">
+        <article class="glass-card focus-panel">
+          <p class="eyebrow">Current meal</p>
+          <h3>${escapeHtml(activeMeal.isActive ? activeMeal.mealName : "No active meal window")}</h3>
+          <p class="panel-copy">
+            ${escapeHtml(
+              activeMeal.isActive
+                ? `${activeMeal.timeLabel} is active. Students can redeem valid coupons now.`
+                : "Update service hours and generate the counter QR before meal windows begin.",
+            )}
+          </p>
+        </article>
+
+        <article class="glass-card focus-panel">
+          <div class="section-row compact">
+            <div>
+              <p class="eyebrow">Menus ready</p>
+              <h3>${escapeHtml(String(stats.menusConfigured || 0))}</h3>
+            </div>
+          </div>
+          <p class="panel-copy">Publish breakfast, lunch, and dinner items students will see in the app.</p>
+          ${menuBarsMarkup(menus)}
+        </article>
+
+        <article class="glass-card focus-panel">
+          <div class="section-row compact">
+            <div>
+              <p class="eyebrow">News live</p>
+              <h3>${escapeHtml(String(stats.publishedNews || 0))}</h3>
+            </div>
+          </div>
+          <p class="panel-copy">Create and schedule announcements without mixing them into other tasks.</p>
+          <div class="news-spark">
+            <span class="news-spark-line"></span>
+          </div>
+        </article>
+      </section>
+
+      <section class="glass-card operations-panel">
+        <div class="section-row compact">
+          <div>
+            <p class="eyebrow">Recent activity</p>
+            <h3>Recent Operations Feed</h3>
+          </div>
+          <a class="secondary-button link-button" href="${escapeHtml(pageUrl("activity"))}">Open Activity Log</a>
+        </div>
+        ${activityFeedMarkup(news, redemptions)}
+      </section>
     </section>
   `;
   const servicePage = `
