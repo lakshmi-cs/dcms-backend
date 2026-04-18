@@ -42,6 +42,7 @@ const state = {
   sessionQr: null,
   validationResult: null,
   sidebarOpen: false,
+  profileMenuOpen: false,
   workspaceQuery: "",
   serverStatusMessage: "Backend connection pending",
   serverStatusTone: "neutral",
@@ -222,6 +223,7 @@ function logout() {
   state.sessionQr = null;
   state.validationResult = null;
   state.sidebarOpen = false;
+  state.profileMenuOpen = false;
   state.loading = false;
   localStorage.removeItem(AUTH_STORAGE_KEY);
   render();
@@ -1311,12 +1313,17 @@ function dashboardMarkup() {
           </button>
           <div class="toolbar-actions">
             <button class="secondary-button toolbar-button" id="refreshDashboardButton" type="button">Refresh</button>
-            <button class="danger-button toolbar-button" id="dashboardLogoutButton" type="button">Log Out</button>
-            <div class="profile-chip">
-              <div class="profile-avatar">A</div>
-              <div>
-                <strong>Admin</strong>
-                <span>Cafeteria session</span>
+            <div class="profile-menu ${state.profileMenuOpen ? "is-open" : ""}">
+              <button class="profile-chip profile-chip-button" id="profileMenuButton" type="button" aria-haspopup="menu" aria-expanded="${state.profileMenuOpen ? "true" : "false"}">
+                <div class="profile-avatar">A</div>
+                <div>
+                  <strong>Admin</strong>
+                  <span>Cafeteria session</span>
+                </div>
+                <span class="profile-caret">${state.profileMenuOpen ? "Ë„" : "Ë…"}</span>
+              </button>
+              <div class="profile-dropdown ${state.profileMenuOpen ? "is-open" : ""}" role="menu" aria-label="Admin menu">
+                <button class="profile-dropdown-item danger" id="dashboardLogoutButton" type="button" role="menuitem">Log Out</button>
               </div>
             </div>
           </div>
@@ -1359,6 +1366,14 @@ function bindEvents() {
   const dashboardLogoutButton = document.getElementById("dashboardLogoutButton");
   if (dashboardLogoutButton) {
     dashboardLogoutButton.addEventListener("click", logout);
+  }
+
+  const profileMenuButton = document.getElementById("profileMenuButton");
+  if (profileMenuButton) {
+    profileMenuButton.addEventListener("click", () => {
+      state.profileMenuOpen = !state.profileMenuOpen;
+      render();
+    });
   }
 
   const toggleSidebarButton = document.getElementById("toggleSidebarButton");
