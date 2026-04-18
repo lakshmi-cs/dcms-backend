@@ -495,7 +495,22 @@ textarea {
   border: 1px solid rgba(255, 255, 255, 0.06);
   background: rgba(255, 255, 255, 0.03);
   color: var(--text);
-  font-size: 1rem;
+  display: grid;
+  place-items: center;
+  padding: 0;
+}
+
+.hamburger-icon {
+  display: grid;
+  gap: 5px;
+}
+
+.hamburger-icon span {
+  display: block;
+  width: 22px;
+  height: 4px;
+  border-radius: 999px;
+  background: #ffffff;
 }
 
 .toolbar-search {
