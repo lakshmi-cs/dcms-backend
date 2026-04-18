@@ -1121,17 +1121,7 @@ function dashboardMarkup() {
               <span></span>
             </span>
           </button>
-          <label class="toolbar-search">
-            <input
-              id="workspaceSearch"
-              type="search"
-              placeholder="Quick jump: menu, news, qr, validation..."
-              value="${escapeHtml(state.workspaceQuery)}"
-            />
-          </label>
           <div class="toolbar-actions">
-            <span class="toolbar-chip ${escapeHtml(state.serverStatusTone)}" id="workspaceServerStatus">${escapeHtml(state.serverStatusMessage)}</span>
-            <span class="toolbar-chip subtle">${escapeHtml(content.timeZone || "Asia/Kuala_Lumpur")}</span>
             <button class="secondary-button toolbar-button" id="refreshDashboardButton" type="button">Refresh</button>
             <div class="profile-chip">
               <div class="profile-avatar">A</div>
@@ -1195,29 +1185,6 @@ function bindEvents() {
     sidebarOverlay.addEventListener("click", () => {
       state.sidebarOpen = false;
       render();
-    });
-  }
-
-  const workspaceSearch = document.getElementById("workspaceSearch");
-  if (workspaceSearch) {
-    workspaceSearch.addEventListener("input", (event) => {
-      state.workspaceQuery = event.currentTarget.value;
-      const hint = document.getElementById("workspaceSearchHint");
-      const match = resolveWorkspaceSection(state.workspaceQuery);
-      if (hint) {
-        hint.textContent = match
-          ? `Press Enter to open ${match.label}`
-          : "Use quick jump to open a workspace section instantly";
-      }
-    });
-
-    workspaceSearch.addEventListener("keydown", (event) => {
-      if (event.key !== "Enter") return;
-      event.preventDefault();
-      const match = resolveWorkspaceSection(workspaceSearch.value);
-      if (!match) return;
-      state.workspaceQuery = workspaceSearch.value;
-      window.location.href = pageUrl(match.key);
     });
   }
 
