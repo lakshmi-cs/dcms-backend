@@ -55,12 +55,12 @@ const shellTopbar = document.querySelector(".topbar");
 const pageShell = document.querySelector(".page-shell");
 
 const WORKSPACE_SECTIONS = [
-  { key: "overview", label: "Home", detail: "Live overview and service health", terms: ["dashboard", "overview", "home", "summary"] },
-  { key: "service", label: "Service Control", detail: "Hours and counter QR", terms: ["service", "meal", "windows", "schedule", "hours", "qr", "counter"] },
-  { key: "menu", label: "Menu Publishing", detail: "Daily meal items", terms: ["menu", "publishing", "breakfast", "lunch", "dinner", "meals"] },
-  { key: "news", label: "News Centre", detail: "Student announcements", terms: ["news", "announcement", "broadcast", "draft", "published"] },
-  { key: "validation", label: "QR Validation", detail: "Redeem and verify", terms: ["validation", "redeem", "coupon", "token", "operator"] },
-  { key: "activity", label: "Activity Log", detail: "Recent redemptions", terms: ["activity", "log", "redemption", "history", "audit"] },
+  { key: "overview", label: "Dashboard", detail: "Cafeteria overview", terms: ["dashboard", "overview", "home", "summary"] },
+  { key: "service", label: "Meal Hours", detail: "Opening times and counter QR", terms: ["service", "meal", "windows", "schedule", "hours", "qr", "counter"] },
+  { key: "menu", label: "Daily Menu", detail: "Breakfast, lunch, and dinner", terms: ["menu", "publishing", "breakfast", "lunch", "dinner", "meals"] },
+  { key: "news", label: "Notices", detail: "Student announcements", terms: ["news", "announcement", "broadcast", "draft", "published", "notice"] },
+  { key: "validation", label: "Scan QR", detail: "Redeem student coupons", terms: ["validation", "redeem", "coupon", "token", "operator", "scan"] },
+  { key: "activity", label: "Student Records", detail: "Recent coupon activity", terms: ["activity", "log", "redemption", "history", "audit", "records"] },
 ];
 
 function pageUrl(sectionKey) {
@@ -259,8 +259,8 @@ function loginMarkup() {
     <section class="login-shell">
       <div class="login-panel glass-card">
         <div class="login-copy">
-          <p class="eyebrow">Premium operations dashboard</p>
-          <h2>Control meal windows, live QR service, menus, and cafeteria news.</h2>
+          <p class="eyebrow">Cafeteria management dashboard</p>
+          <h2>Manage meal hours, live QR service, daily menus, and student notices.</h2>
           <p>
             This website links directly to your cafeteria backend, so updates made here can flow into the student application.
           </p>
@@ -612,6 +612,166 @@ function heroMetricMarkup(label, value, detail, modifier = "", accentMarkup = ""
   `;
 }
 
+function formatCompactNumber(value) {
+  return new Intl.NumberFormat("en", { notation: "compact", maximumFractionDigits: 1 }).format(Number(value || 0));
+}
+
+function formatShortDay(value) {
+  if (!value) return "";
+  const parsed = new Date(`${value}T00:00:00`);
+  if (Number.isNaN(parsed.getTime())) return value;
+  return parsed.toLocaleDateString("en-US", { weekday: "short" });
+}
+
+function snapshotItemMarkup(label, value, detail) {
+  return `
+    <div class="snapshot-item">
+      <span>${escapeHtml(label)}</span>
+      <strong>${escapeHtml(value)}</strong>
+      <small>${escapeHtml(detail)}</small>
+    </div>
+  `;
+}
+
+function summaryKpiMarkup(label, value, detail, modifier = "") {
+  return `
+    <article class="glass-card summary-kpi-card ${modifier}">
+      <span>${escapeHtml(label)}</span>
+      <strong>${escapeHtml(value)}</strong>
+      <small>${escapeHtml(detail)}</small>
+    </article>
+  `;
+}
+
+function barChartRowsMarkup(items, emptyMessage, valueSuffix = "") {
+  if (!items.length) {
+    return `<div class="empty-card">${escapeHtml(emptyMessage)}</div>`;
+  }
+
+  const maxValue = Math.max(1, ...items.map((item) => Number(item.total || item.value || 0)));
+
+  return `
+    <div class="bar-chart-list">
+      ${items
+        .map((item, index) => {
+          const total = Number(item.total || item.value || 0);
+          const width = Math.max(total > 0 ? 12 : 0, (total / maxValue) * 100);
+          return `
+            <div class="bar-chart-row">
+              <div class="bar-chart-labels">
+                <strong>${escapeHtml(item.label || item.mealName || item.couponType || "Item")}</strong>
+                <span>${escapeHtml(item.detail || "Today")}</span>
+              </div>
+              <div class="bar-chart-track">
+                <span class="bar-chart-fill bar-chart-fill--${(index % 4) + 1}" style="width:${width}%"></span>
+              </div>
+              <strong class="bar-chart-value">${escapeHtml(`${total}${valueSuffix}`)}</strong>
+            </div>
+          `;
+        })
+        .join("")}
+    </div>
+  `;
+}
+
+function studentTrendChartMarkup(weeklyTrend) {
+  const trend = weeklyTrend.length
+    ? weeklyTrend
+    : Array.from({ length: 7 }, (_, index) => ({
+        activityDate: `Day ${index + 1}`,
+        couponsIssued: 0,
+        studentsServed: 0,
+      }));
+  const maxValue = Math.max(
+    1,
+    ...trend.flatMap((item) => [Number(item.couponsIssued || 0), Number(item.studentsServed || 0)]),
+  );
+
+  return `
+    <div class="trend-chart-shell">
+      <div class="trend-chart-bars">
+        ${trend
+          .map((item) => {
+            const issuedHeight = Math.max(item.couponsIssued ? 14 : 8, (Number(item.couponsIssued || 0) / maxValue) * 100);
+            const studentsHeight = Math.max(item.studentsServed ? 14 : 8, (Number(item.studentsServed || 0) / maxValue) * 100);
+            return `
+              <div class="trend-bar-group">
+                <div class="trend-bar-stack">
+                  <span class="trend-bar trend-bar--issued" style="height:${issuedHeight}%"></span>
+                  <span class="trend-bar trend-bar--students" style="height:${studentsHeight}%"></span>
+                </div>
+                <strong>${escapeHtml(formatShortDay(item.activityDate))}</strong>
+              </div>
+            `;
+          })
+          .join("")}
+      </div>
+      <div class="trend-legend">
+        <span><i class="legend-swatch legend-swatch--issued"></i>Coupons issued</span>
+        <span><i class="legend-swatch legend-swatch--students"></i>Students served</span>
+      </div>
+    </div>
+  `;
+}
+
+function serviceSnapshotMarkup(activeMeal, serverStamp, stats, mealWindows) {
+  const nextWindow = !activeMeal.isActive
+    ? mealWindows.find((window) => window.mealCode === activeMeal.mealCode)
+    : null;
+
+  return `
+    <article class="glass-card cafeteria-snapshot-card">
+      <div class="section-row compact">
+        <div>
+          <p class="eyebrow">Service snapshot</p>
+          <h3>${escapeHtml(activeMeal.isActive ? `${activeMeal.mealName} is live` : "Cafeteria service closed")}</h3>
+        </div>
+        <span class="service-badge ${activeMeal.isActive ? "live" : "waiting"}">${escapeHtml(activeMeal.isActive ? "Open now" : "Waiting")}</span>
+      </div>
+      <p class="panel-copy">
+        ${escapeHtml(
+          activeMeal.isActive
+            ? `${activeMeal.timeLabel} is active, so students can generate and redeem valid coupons right now.`
+            : nextWindow
+              ? `Next window is ${nextWindow.mealName} (${nextWindow.timeLabel}). Staff can prepare the counter QR and menu before service starts.`
+              : "No cafeteria window is active yet. Keep meal hours and menu ready before the next session begins.",
+        )}
+      </p>
+      <div class="snapshot-grid">
+        ${snapshotItemMarkup("Server time", serverStamp || "Unavailable", "Live backend time")}
+        ${snapshotItemMarkup("Menus ready", String(stats.menusConfigured || 0), "Meals published today")}
+        ${snapshotItemMarkup("News live", String(stats.publishedNews || 0), "Visible in the app")}
+        ${snapshotItemMarkup("QR redeemed", String(stats.qrRedeemedToday || 0), "Successful scans today")}
+      </div>
+    </article>
+  `;
+}
+
+function redemptionMiniListMarkup(redemptions) {
+  if (!redemptions.length) {
+    return `<div class="empty-card">Student coupon records will appear here after the first issue or redemption today.</div>`;
+  }
+
+  return `
+    <div class="activity-mini-list">
+      ${redemptions
+        .slice(0, 5)
+        .map(
+          (item) => `
+            <div class="activity-mini-item">
+              <div>
+                <strong>${escapeHtml(item.studentId)}</strong>
+                <span>${escapeHtml(`${item.couponType} Â· ${item.mealCode}`)}</span>
+              </div>
+              <small>${escapeHtml(item.redeemedAt ? formatRelativeTime(item.redeemedAt) : formatRelativeTime(item.issuedAt))}</small>
+            </div>
+          `,
+        )
+        .join("")}
+    </div>
+  `;
+}
+
 function workflowTimelineMarkup(activeMeal, stats) {
   const activeIndex = activeMeal.isActive
     ? 3
@@ -730,93 +890,121 @@ function dashboardMarkup() {
   const mealWindows = content.mealWindows || [];
   const news = content.news || [];
   const redemptions = dashboard.recentRedemptions || [];
+  const analytics = dashboard.analytics || {};
   const serverStamp = `${content.serverDate || dashboard.serverDate || ""} ${content.serverTime || dashboard.serverTime || ""}`.trim();
   const liveMealLabel = activeMeal.isActive ? activeMeal.mealName : "No active meal window";
   const liveMealDetail = activeMeal.timeLabel || "Waiting for next service window";
   const apiBaseLabel = state.apiBaseUrl || "Not configured";
-  const resolvedQuerySection = resolveWorkspaceSection(state.workspaceQuery);
+  const registeredStudents = Number(stats.registeredStudents || analytics.registeredStudents || 0);
+  const activeStudentsToday = Number(stats.activeStudentsToday || analytics.activeStudentsToday || 0);
+  const mealBreakdown = (analytics.mealBreakdown || mealWindows.map((window) => ({
+    mealName: window.mealName,
+    total: 0,
+  }))).map((item) => ({
+    label: item.mealName || item.label,
+    detail: "Coupons issued",
+    total: Number(item.total || 0),
+  }));
+  const couponBreakdown = (analytics.couponBreakdown || [
+    { couponType: "Economy", total: 0 },
+    { couponType: "Coupon", total: 0 },
+  ]).map((item) => ({
+    label: item.couponType === "Coupon" ? "Food stall coupon" : item.couponType,
+    detail: "Today's requests",
+    total: Number(item.total || 0),
+  }));
+  const weeklyTrend = analytics.weeklyTrend || [];
   state.currentPage = getCurrentPageKey();
-  const quickJumpActions = `
-    <a class="secondary-button link-button" href="${escapeHtml(pageUrl("menu"))}">Open Menu</a>
-    <a class="secondary-button link-button" href="${escapeHtml(pageUrl("news"))}">Open News</a>
-  `;
   const dashboardPage = `
-    <section class="control-room-overview simple-overview">
-      <section class="simple-overview-header glass-card">
+    <section class="control-room-overview cafeteria-overview">
+      <section class="overview-intro-card glass-card">
         <div>
           <p class="eyebrow">Dashboard</p>
-          <h2>AIMST Cafeteria Admin</h2>
-          <p class="panel-copy">A cleaner overview of today's cafeteria operations, student-facing content, and recent QR activity.</p>
+          <h2>DCMS cafeteria management</h2>
+          <p class="panel-copy">Track student demand, meal readiness, and coupon activity in one place without extra dashboard clutter.</p>
+        </div>
+        <div class="overview-intro-meta">
+          <span class="overview-meta-pill">${escapeHtml(content.serverDate || dashboard.serverDate || "Today")}</span>
+          <span class="overview-meta-pill">${escapeHtml(activeMeal.isActive ? `${activeMeal.mealName} live` : "No live meal")}</span>
         </div>
       </section>
 
-      <div class="hero-metrics-grid simple-hero-grid">
-        ${heroMetricMarkup(
-          "Live meal status",
-          activeMeal.isActive ? activeMeal.mealName : "Closed",
-          activeMeal.timeLabel || "Waiting for next window",
-          "hero-metric-card--spotlight",
-          `<span class="status-ring"></span>`,
-        )}
-        ${heroMetricMarkup("Menus ready", String(stats.menusConfigured || 0), "Published for today's service")}
-        ${heroMetricMarkup("News published", String(stats.publishedNews || 0), "Visible to students")}
-      </div>
+      <section class="overview-kpi-grid">
+        ${summaryKpiMarkup("Registered students", formatCompactNumber(registeredStudents), "Users linked to the DCMS app", "summary-kpi-card--students")}
+        ${summaryKpiMarkup("Students served today", formatCompactNumber(activeStudentsToday), "Distinct students with coupons today", "summary-kpi-card--served")}
+        ${summaryKpiMarkup("Coupons issued today", formatCompactNumber(stats.qrIssuedToday || 0), "Generated from the student app", "summary-kpi-card--issued")}
+        ${summaryKpiMarkup("Coupons redeemed today", formatCompactNumber(stats.qrRedeemedToday || 0), "Successfully scanned at the counter", "summary-kpi-card--redeemed")}
+      </section>
+
+      <section class="dashboard-chart-grid">
+        ${serviceSnapshotMarkup(activeMeal, serverStamp, stats, mealWindows)}
+
+        <article class="glass-card chart-card">
+          <div class="section-row compact">
+            <div>
+              <p class="eyebrow">Meal demand</p>
+              <h3>Today by meal window</h3>
+            </div>
+          </div>
+          <p class="panel-copy">See which cafeteria session is attracting the most coupon requests today.</p>
+          ${barChartRowsMarkup(mealBreakdown, "Meal demand will appear after students begin generating coupons.")}
+        </article>
+      </section>
+
+      <section class="dashboard-chart-grid dashboard-chart-grid--wide">
+        <article class="glass-card chart-card chart-card--wide">
+          <div class="section-row compact">
+            <div>
+              <p class="eyebrow">Student traffic</p>
+              <h3>Seven-day app activity</h3>
+            </div>
+          </div>
+          <p class="panel-copy">Compare total coupons issued versus distinct students served across the last seven days.</p>
+          ${studentTrendChartMarkup(weeklyTrend)}
+        </article>
+
+        <article class="glass-card chart-card">
+          <div class="section-row compact">
+            <div>
+              <p class="eyebrow">Coupon mix</p>
+              <h3>Economy vs food stall</h3>
+            </div>
+          </div>
+          <p class="panel-copy">Monitor which coupon type students prefer today so service can prepare correctly.</p>
+          ${barChartRowsMarkup(couponBreakdown, "Coupon type demand will appear after the first student request.")}
+        </article>
+      </section>
 
       ${workflowTimelineMarkup(activeMeal, stats)}
 
-      <section class="focus-insights-grid simple-focus-grid">
-        <article class="glass-card focus-panel">
-          <p class="eyebrow">Current meal</p>
-          <h3>${escapeHtml(activeMeal.isActive ? activeMeal.mealName : "No active meal window")}</h3>
-          <p class="panel-copy">
-            ${escapeHtml(
-              activeMeal.isActive
-                ? `${activeMeal.timeLabel} is active. Students can redeem valid coupons now.`
-                : "Update service hours and generate the counter QR before meal windows begin.",
-            )}
-          </p>
-        </article>
-
-        <article class="glass-card focus-panel">
+      <section class="dashboard-chart-grid">
+        <article class="glass-card chart-card">
           <div class="section-row compact">
             <div>
-              <p class="eyebrow">Menus ready</p>
-              <h3>${escapeHtml(String(stats.menusConfigured || 0))}</h3>
+              <p class="eyebrow">Recent student records</p>
+              <h3>Latest coupon activity</h3>
             </div>
           </div>
-          <p class="panel-copy">Publish breakfast, lunch, and dinner items students will see in the app.</p>
-          ${menuBarsMarkup(menus)}
+          <p class="panel-copy">Quick view of the most recent student coupon actions without leaving the dashboard.</p>
+          ${redemptionMiniListMarkup(redemptions)}
         </article>
 
-        <article class="glass-card focus-panel">
+        <section class="glass-card operations-panel">
           <div class="section-row compact">
             <div>
-              <p class="eyebrow">News live</p>
-              <h3>${escapeHtml(String(stats.publishedNews || 0))}</h3>
+              <p class="eyebrow">Admin activity</p>
+              <h3>Operations feed</h3>
             </div>
           </div>
-          <p class="panel-copy">Create and schedule announcements without mixing them into other tasks.</p>
-          <div class="news-spark">
-            <span class="news-spark-line"></span>
-          </div>
-        </article>
-      </section>
-
-      <section class="glass-card operations-panel">
-        <div class="section-row compact">
-          <div>
-            <p class="eyebrow">Recent activity</p>
-            <h3>Recent Operations Feed</h3>
-          </div>
-        </div>
-        ${activityFeedMarkup(news, redemptions)}
+          ${activityFeedMarkup(news, redemptions)}
+        </section>
       </section>
     </section>
   `;
   const servicePage = `
     ${pageHeaderMarkup(
       "Service operations",
-      "Service Control",
+      "Meal Hours",
       "This page focuses only on cafeteria operating hours and the counter QR so staff can prepare service without extra distractions.",
       `<button type="button" class="secondary-button" id="saveScheduleButton">Save Hours</button>
        <button type="button" class="secondary-button" id="generateSessionQrButton">Generate QR</button>`,
@@ -886,7 +1074,7 @@ function dashboardMarkup() {
   const menuPage = `
     ${pageHeaderMarkup(
       "Student content",
-      "Menu Publishing",
+      "Daily Menu",
       "This page is only for today's menu. Publish clean meal items here without mixing them with news or QR validation tasks.",
       `<button type="button" class="secondary-button" id="saveMenusButton">Publish Menu</button>`,
       `Student app reads these items from the shared backend after refresh.`,
@@ -923,7 +1111,7 @@ function dashboardMarkup() {
   const newsPage = `
     ${pageHeaderMarkup(
       "Broadcast centre",
-      "News Centre",
+      "Notices",
       "Use this page to write, schedule, edit, and review student-facing announcements in one place.",
       `<button type="button" class="secondary-button" id="resetNewsFormButton">Clear Form</button>`,
       `Published news will appear in the app when its publish time is reached.`,
@@ -1004,7 +1192,7 @@ function dashboardMarkup() {
   const validationPage = `
     ${pageHeaderMarkup(
       "Counter validation",
-      "QR Validation",
+      "Scan QR",
       "This page is dedicated to validating and redeeming student QR tokens against the live backend.",
       "",
       `Use operator name plus the student token for a proper redemption record.`,
@@ -1043,7 +1231,7 @@ function dashboardMarkup() {
   const activityPage = `
     ${pageHeaderMarkup(
       "Audit trail",
-      "Activity Log",
+      "Student Records",
       "This page focuses on recent coupon history so staff can review what was issued or redeemed today.",
       "",
       `Table updates after live admin actions and dashboard refresh.`,
@@ -1127,7 +1315,7 @@ function dashboardMarkup() {
               <div class="profile-avatar">A</div>
               <div>
                 <strong>Admin</strong>
-                <span>Control room session</span>
+                <span>Cafeteria session</span>
               </div>
             </div>
           </div>
