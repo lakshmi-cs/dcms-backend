@@ -1432,7 +1432,7 @@ function bindEvents() {
   logoutButton.onclick = logout;
   const profileMenuButton = document.getElementById("profileMenuButton");
   if (profileMenuButton) {
-    profileMenuButton.addEventListener("click", (event) => {
+    profileMenuButton.addEventListener("mousedown", (event) => {
       event.stopPropagation();
       setProfileMenuOpen(!state.profileMenuOpen);
     });
