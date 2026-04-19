@@ -1473,6 +1473,12 @@ function bindEvents() {
     });
   }
 
+  document.querySelectorAll(".dashboard-nav-link").forEach((link) => {
+    link.addEventListener("click", () => {
+      state.sidebarOpen = false;
+    });
+  });
+
   const sidebarOverlay = document.getElementById("sidebarOverlay");
   if (sidebarOverlay) {
     sidebarOverlay.addEventListener("click", () => {
