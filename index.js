@@ -19,6 +19,7 @@ const COUPON_TOKEN_TTL_MINUTES = Number(process.env.COUPON_TOKEN_TTL_MINUTES || 
 
 app.use(cors());
 app.use(bodyParser.json());
+app.use(express.static('dcms_admin_portal')); 
 
 const db = mysql.createPool({
   host: process.env.TIDB_HOST,
