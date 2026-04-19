@@ -1,1705 +1,2086 @@
-const config = window.DCMS_ADMIN_CONFIG || {};
-const AUTH_STORAGE_KEY = "dcms_admin_token";
-const API_BASE_STORAGE_KEY = "dcms_admin_api_base_url";
-
-function normalizeApiBaseUrl(value) {
-  return String(value || "").trim().replace(/\/$/, "");
+:root {
+  --bg: #08112e;
+  --surface: rgba(12, 21, 38, 0.72);
+  --surface-strong: rgba(12, 21, 38, 0.92);
+  --surface-soft: rgba(255, 255, 255, 0.06);
+  --border: rgba(160, 178, 214, 0.18);
+  --text: #f4f7fb;
+  --muted: #9fabc4;
+  --accent: #7dd3fc;
+  --accent-strong: #14b8a6;
+  --danger: #ff7d7d;
+  --success: #86efac;
+  --warning: #f9d976;
+  --shadow: 0 24px 60px rgba(0, 0, 0, 0.32);
+  --radius: 28px;
+  --radius-small: 18px;
+  --font-display: "Avenir Next", "Segoe UI", "Helvetica Neue", sans-serif;
+  --font-body: "Segoe UI", "Avenir Next", "Helvetica Neue", sans-serif;
 }
 
-function resolveDefaultApiBaseUrl() {
-  const configuredUrl = normalizeApiBaseUrl(config.apiBaseUrl);
-  if (configuredUrl) {
-    return configuredUrl;
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  min-height: 100%;
+  background: radial-gradient(circle at top, #132342 0%, #08111f 45%, #04070f 100%);
+  color: var(--text);
+  font-family: var(--font-body);
+}
+
+body {
+  position: relative;
+  overflow-x: hidden;
+}
+
+button,
+input,
+textarea,
+select {
+  font: inherit;
+}
+
+button {
+  cursor: pointer;
+}
+
+.background-orb {
+  position: fixed;
+  border-radius: 999px;
+  filter: blur(30px);
+  opacity: 0.55;
+  pointer-events: none;
+}
+
+.orb-one {
+  width: 280px;
+  height: 280px;
+  background: rgba(68, 174, 255, 0.2);
+  top: 60px;
+  right: 8%;
+}
+
+.orb-two {
+  width: 380px;
+  height: 380px;
+  background: rgba(20, 184, 166, 0.18);
+  left: -80px;
+  bottom: 10%;
+}
+
+.background-grid {
+  position: fixed;
+  inset: 0;
+  background-image:
+    linear-gradient(rgba(255, 255, 255, 0.035) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.035) 1px, transparent 1px);
+  background-size: 40px 40px;
+  mask-image: linear-gradient(180deg, rgba(0, 0, 0, 0.42), transparent 88%);
+  pointer-events: none;
+}
+
+.page-shell {
+  position: relative;
+  z-index: 1;
+  width: min(1400px, calc(100vw - 40px));
+  margin: 0 auto;
+  padding: 24px 0 56px;
+}
+
+.topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 24px;
+  margin-bottom: 26px;
+}
+
+.topbar h1,
+.hero-copy h2,
+.login-copy h2,
+.ops-sidebar h3,
+.module-header h3,
+.panel-card h3 {
+  margin: 0;
+  font-family: var(--font-display);
+  letter-spacing: -0.03em;
+}
+
+.topbar h1 {
+  font-size: clamp(1.7rem, 3vw, 2.65rem);
+}
+
+.eyebrow {
+  margin: 0 0 10px;
+  color: var(--accent);
+  text-transform: uppercase;
+  letter-spacing: 0.18em;
+  font-size: 0.74rem;
+  font-weight: 700;
+}
+
+.topbar-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.status-pill,
+.hero-tag,
+.feature-chip,
+.news-badge,
+.table-pill {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  border-radius: 999px;
+  padding: 10px 14px;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  color: var(--muted);
+  font-size: 0.83rem;
+}
+
+.status-pill[data-tone="success"] {
+  color: var(--success);
+  border-color: rgba(134, 239, 172, 0.24);
+  background: rgba(134, 239, 172, 0.12);
+}
+
+.status-pill[data-tone="danger"] {
+  color: var(--danger);
+  border-color: rgba(255, 125, 125, 0.24);
+  background: rgba(255, 125, 125, 0.12);
+}
+
+.glass-card {
+  background: linear-gradient(180deg, rgba(16, 26, 45, 0.9), rgba(10, 17, 31, 0.82));
+  border: 1px solid var(--border);
+  box-shadow: var(--shadow);
+  backdrop-filter: blur(24px);
+  border-radius: var(--radius);
+}
+
+.login-shell {
+  min-height: calc(100vh - 180px);
+  display: grid;
+  place-items: center;
+}
+
+.login-panel {
+  width: min(1080px, 100%);
+  padding: 34px;
+  display: grid;
+  grid-template-columns: 1.15fr 0.85fr;
+  gap: 28px;
+}
+
+.login-copy {
+  padding: 10px 8px 10px 4px;
+}
+
+.login-copy h2 {
+  font-size: clamp(2rem, 4vw, 3.6rem);
+  line-height: 1.05;
+  margin-bottom: 18px;
+}
+
+.login-copy p {
+  color: var(--muted);
+  font-size: 1.02rem;
+  line-height: 1.7;
+  margin: 0 0 22px;
+}
+
+.feature-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.feature-chip {
+  color: var(--text);
+  background: rgba(125, 211, 252, 0.08);
+}
+
+.auth-form,
+.stacked-form {
+  display: grid;
+  gap: 16px;
+}
+
+.auth-form {
+  padding: 26px;
+  border-radius: 24px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+label {
+  display: grid;
+  gap: 8px;
+}
+
+label span {
+  color: var(--muted);
+  font-size: 0.9rem;
+  font-weight: 600;
+}
+
+input,
+textarea,
+select {
+  width: 100%;
+  border: 1px solid rgba(160, 178, 214, 0.18);
+  background: rgba(255, 255, 255, 0.04);
+  border-radius: 18px;
+  color: var(--text);
+  padding: 14px 16px;
+  outline: none;
+  transition: border-color 160ms ease, background 160ms ease, transform 160ms ease;
+}
+
+input:focus,
+textarea:focus,
+select:focus {
+  border-color: rgba(125, 211, 252, 0.75);
+  background: rgba(255, 255, 255, 0.06);
+  transform: translateY(-1px);
+}
+
+textarea {
+  resize: vertical;
+  min-height: 132px;
+}
+
+.primary-button,
+.secondary-button,
+.ghost-button,
+.danger-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  border-radius: 999px;
+  padding: 14px 22px;
+  font-weight: 700;
+  transition: transform 180ms ease, box-shadow 180ms ease, opacity 180ms ease;
+}
+
+.primary-button:hover,
+.secondary-button:hover,
+.ghost-button:hover,
+.danger-button:hover {
+  transform: translateY(-1px);
+}
+
+.primary-button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.primary-button {
+  color: #07111f;
+  background: linear-gradient(135deg, #9bdcfe, #7eead5);
+  box-shadow: 0 14px 26px rgba(126, 234, 213, 0.24);
+}
+
+.secondary-button {
+  color: var(--text);
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.ghost-button {
+  color: var(--text);
+  background: transparent;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+}
+
+.danger-button {
+  color: var(--danger);
+  background: rgba(255, 125, 125, 0.12);
+  border: 1px solid rgba(255, 125, 125, 0.18);
+}
+
+.helper-copy {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.86rem;
+}
+
+.page-shell.dashboard-mode {
+  width: min(1520px, calc(100vw - 32px));
+  padding-top: 16px;
+}
+
+.dashboard-shell {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 14px;
+  min-height: calc(100vh - 56px);
+}
+
+.dashboard-sidebar {
+  position: fixed;
+  top: 18px;
+  left: 18px;
+  bottom: 18px;
+  width: 240px;
+  z-index: 30;
+  display: grid;
+  gap: 14px;
+  transform: translateX(-112%);
+  transition: transform 180ms ease;
+}
+
+.dashboard-sidebar.is-open {
+  transform: translateX(0);
+}
+
+.sidebar-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 20;
+  border: 0;
+  background: rgba(5, 8, 25, 0.48);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 180ms ease;
+}
+
+.sidebar-overlay.is-open {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.dashboard-brand,
+.dashboard-sidebar-panel,
+.dashboard-toolbar,
+.content-header {
+  padding: 20px;
+}
+
+.dashboard-brand {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 88px;
+  border-radius: 18px;
+  background: linear-gradient(180deg, rgba(15, 17, 48, 0.96), rgba(17, 18, 54, 0.94));
+  box-shadow: 0 14px 30px rgba(8, 10, 36, 0.5);
+}
+
+.brand-mark {
+  width: 42px;
+  height: 42px;
+  border-radius: 12px;
+  display: grid;
+  place-items: center;
+  font-weight: 800;
+  font-size: 0.98rem;
+  color: #fff;
+  background: linear-gradient(135deg, #5b42f3, #2db0ff);
+  box-shadow: 0 12px 24px rgba(66, 79, 231, 0.28);
+}
+
+.dashboard-brand strong,
+.profile-chip strong {
+  display: block;
+  font-size: 0.98rem;
+  line-height: 1.25;
+}
+
+.dashboard-brand span,
+.profile-chip span {
+  color: var(--muted);
+  font-size: 0.82rem;
+}
+
+.dashboard-sidebar-panel {
+  display: grid;
+  gap: 18px;
+  border-radius: 18px;
+  background: linear-gradient(180deg, rgba(13, 15, 43, 0.98), rgba(14, 16, 48, 0.96));
+  box-shadow: 0 14px 30px rgba(8, 10, 36, 0.45);
+}
+
+.dashboard-nav-group {
+  display: grid;
+  gap: 12px;
+}
+
+.dashboard-nav-label {
+  color: var(--muted);
+  font-size: 0.74rem;
+  text-transform: uppercase;
+  letter-spacing: 0.16em;
+}
+
+.dashboard-nav-link {
+  display: grid;
+  grid-template-columns: 42px minmax(0, 1fr);
+  gap: 10px;
+  width: 100%;
+  padding: 12px 14px;
+  border-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.04);
+  background: rgba(255, 255, 255, 0.015);
+  color: var(--text);
+  text-align: left;
+  text-decoration: none;
+  transition: transform 180ms ease, border-color 180ms ease, background 180ms ease, box-shadow 180ms ease;
+}
+
+.dashboard-nav-link:hover {
+  transform: translateY(-1px);
+  border-color: rgba(93, 109, 255, 0.2);
+  background: rgba(93, 109, 255, 0.08);
+}
+
+.dashboard-nav-link.is-active {
+  border-color: rgba(91, 66, 243, 0.3);
+  background: linear-gradient(180deg, rgba(26, 31, 84, 0.96), rgba(19, 22, 68, 0.94));
+  box-shadow: inset 0 0 0 1px rgba(110, 91, 255, 0.08);
+}
+
+.dashboard-nav-link small {
+  color: var(--muted);
+  line-height: 1.45;
+}
+
+.nav-icon {
+  width: 42px;
+  height: 42px;
+  border-radius: 12px;
+  display: grid;
+  place-items: center;
+  color: #d7e6ff;
+  font-weight: 700;
+  background: rgba(97, 114, 255, 0.1);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.nav-copy {
+  display: grid;
+  gap: 4px;
+}
+
+.dashboard-stage {
+  display: grid;
+  gap: 18px;
+}
+
+.dashboard-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  min-height: 62px;
+  padding: 14px 18px;
+  border-radius: 16px;
+  background: linear-gradient(180deg, rgba(14, 16, 48, 0.98), rgba(16, 18, 56, 0.96));
+  box-shadow: 0 12px 28px rgba(9, 11, 38, 0.45);
+  overflow: visible;
+}
+
+.toolbar-icon-button {
+  width: 54px;
+  height: 54px;
+  flex: 0 0 54px;
+  border-radius: 14px;
+  border: 0;
+  background: #ffffff;
+  color: #111111;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  box-shadow: 0 10px 22px rgba(6, 9, 28, 0.28);
+}
+
+.hamburger-icon {
+  display: grid;
+  gap: 7px;
+  width: 26px;
+}
+
+.hamburger-icon span {
+  display: block;
+  width: 26px;
+  height: 5px;
+  border-radius: 999px;
+  background: currentColor;
+}
+
+.toolbar-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-left: auto;
+}
+
+.toolbar-chip {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 10px 14px;
+  border-radius: 999px;
+  font-size: 0.82rem;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.035);
+  color: var(--text);
+}
+
+.toolbar-chip.success {
+  color: #dbffe6;
+  border-color: rgba(42, 189, 95, 0.22);
+  background: linear-gradient(135deg, rgba(33, 145, 81, 0.92), rgba(50, 177, 104, 0.74));
+}
+
+.toolbar-chip.danger {
+  color: var(--danger);
+  border-color: rgba(255, 125, 125, 0.24);
+  background: rgba(255, 125, 125, 0.12);
+}
+
+.toolbar-chip.subtle {
+  color: var(--muted);
+}
+
+.toolbar-button {
+  min-height: 44px;
+}
+
+.profile-menu {
+  position: relative;
+}
+
+.profile-chip {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 10px 8px 8px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.profile-chip-button {
+  width: 100%;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  cursor: pointer;
+  color: inherit;
+  text-align: left;
+}
+
+.profile-chip-button:hover {
+  border-color: rgba(125, 211, 252, 0.26);
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.profile-avatar {
+  width: 40px;
+  height: 40px;
+  border-radius: 999px;
+  display: grid;
+  place-items: center;
+  font-weight: 700;
+  color: #fff;
+  background: linear-gradient(135deg, #5b42f3, #2db0ff);
+}
+
+.profile-caret {
+  color: var(--muted);
+  font-size: 0.95rem;
+  line-height: 1;
+}
+
+.profile-dropdown {
+  position: absolute;
+  top: calc(100% + 10px);
+  right: 0;
+  min-width: 170px;
+  padding: 8px;
+  border-radius: 16px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: linear-gradient(180deg, rgba(14, 16, 48, 0.98), rgba(16, 18, 56, 0.96));
+  box-shadow: 0 18px 34px rgba(8, 10, 36, 0.42);
+  opacity: 0;
+  pointer-events: none;
+  transform: translateY(-6px);
+  transition: opacity 160ms ease, transform 160ms ease;
+  z-index: 12;
+}
+
+.profile-dropdown.is-open {
+  opacity: 1;
+  pointer-events: auto;
+  transform: translateY(0);
+}
+
+.profile-dropdown-item {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  min-height: 44px;
+  padding: 12px 14px;
+  border: 0;
+  border-radius: 12px;
+  background: transparent;
+  color: var(--text);
+  font-weight: 700;
+}
+
+.profile-dropdown-item:hover {
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.profile-dropdown-item.danger {
+  color: var(--danger);
+}
+
+.dashboard-content {
+  display: grid;
+  gap: 18px;
+}
+
+.content-header {
+  display: grid;
+  grid-template-columns: 1.2fr 0.8fr;
+  gap: 24px;
+}
+
+.content-heading h2 {
+  margin: 0 0 14px;
+  font-size: clamp(1.9rem, 3vw, 2.8rem);
+}
+
+.content-heading p {
+  margin: 0;
+  color: var(--muted);
+  line-height: 1.7;
+}
+
+.content-meta {
+  display: grid;
+  align-content: space-between;
+  gap: 16px;
+}
+
+.content-shortcuts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.overview-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 16px;
+}
+
+.overview-card {
+  padding: 22px;
+  display: grid;
+  gap: 14px;
+}
+
+.overview-card span {
+  color: var(--muted);
+  font-size: 0.82rem;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+}
+
+.overview-card strong {
+  font-size: 1.6rem;
+}
+
+.overview-card p {
+  margin: 0;
+  color: var(--muted);
+  line-height: 1.6;
+}
+
+.overview-card .secondary-button {
+  justify-self: start;
+}
+
+.search-hint {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+
+.control-room-overview {
+  display: grid;
+  gap: 18px;
+}
+
+.simple-overview {
+  gap: 16px;
+}
+
+.cafeteria-overview {
+  gap: 18px;
+}
+
+.overview-intro-card {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 18px;
+  padding: 24px;
+  border-radius: 18px;
+  background:
+    radial-gradient(circle at top right, rgba(244, 168, 63, 0.16), transparent 28%),
+    linear-gradient(180deg, rgba(14, 16, 48, 0.98), rgba(16, 18, 56, 0.96));
+}
+
+.overview-intro-card h2 {
+  margin: 10px 0 10px;
+  font-size: clamp(1.7rem, 2.8vw, 2.5rem);
+}
+
+.overview-intro-meta {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
+.overview-meta-pill {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 40px;
+  padding: 10px 14px;
+  border-radius: 999px;
+  color: #f5f7fb;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.overview-kpi-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.summary-kpi-card {
+  padding: 20px;
+  border-radius: 18px;
+  background:
+    radial-gradient(circle at top right, rgba(45, 176, 255, 0.12), transparent 32%),
+    linear-gradient(180deg, rgba(14, 16, 48, 0.98), rgba(16, 18, 56, 0.96));
+  box-shadow: 0 12px 28px rgba(8, 10, 36, 0.42);
+}
+
+.summary-kpi-card span,
+.snapshot-item span,
+.bar-chart-labels span,
+.activity-mini-item span {
+  color: var(--muted);
+}
+
+.summary-kpi-card span {
+  display: block;
+  margin-bottom: 14px;
+  font-size: 0.84rem;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+}
+
+.summary-kpi-card strong {
+  display: block;
+  margin-bottom: 8px;
+  font-size: clamp(1.8rem, 3vw, 2.35rem);
+  letter-spacing: -0.04em;
+}
+
+.summary-kpi-card small {
+  line-height: 1.6;
+  color: var(--muted);
+}
+
+.summary-kpi-card--students {
+  border-color: rgba(90, 149, 255, 0.18);
+}
+
+.summary-kpi-card--served {
+  border-color: rgba(54, 191, 118, 0.22);
+}
+
+.summary-kpi-card--issued {
+  border-color: rgba(246, 176, 68, 0.24);
+}
+
+.summary-kpi-card--redeemed {
+  border-color: rgba(131, 217, 184, 0.22);
+}
+
+.dashboard-chart-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+}
+
+.chart-card,
+.cafeteria-snapshot-card {
+  padding: 22px;
+  border-radius: 18px;
+  background:
+    radial-gradient(circle at bottom right, rgba(45, 176, 255, 0.08), transparent 28%),
+    linear-gradient(180deg, rgba(14, 16, 48, 0.98), rgba(16, 18, 56, 0.96));
+  box-shadow: 0 12px 28px rgba(8, 10, 36, 0.42);
+}
+
+.chart-card--wide {
+  min-height: 360px;
+}
+
+.service-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 38px;
+  padding: 8px 14px;
+  border-radius: 999px;
+  font-weight: 700;
+  border: 1px solid transparent;
+}
+
+.service-badge.live {
+  color: #eaffef;
+  background: linear-gradient(135deg, rgba(38, 163, 88, 0.95), rgba(60, 190, 112, 0.72));
+  border-color: rgba(122, 255, 174, 0.18);
+}
+
+.service-badge.waiting {
+  color: #fff2d8;
+  background: linear-gradient(135deg, rgba(199, 121, 29, 0.9), rgba(236, 166, 78, 0.72));
+  border-color: rgba(255, 214, 142, 0.2);
+}
+
+.snapshot-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  margin-top: 18px;
+}
+
+.snapshot-item {
+  display: grid;
+  gap: 8px;
+  padding: 16px;
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.snapshot-item strong {
+  font-size: 1.08rem;
+}
+
+.snapshot-item small {
+  color: var(--muted);
+  line-height: 1.5;
+}
+
+.bar-chart-list {
+  display: grid;
+  gap: 16px;
+  margin-top: 18px;
+}
+
+.bar-chart-row {
+  display: grid;
+  grid-template-columns: minmax(120px, 0.8fr) minmax(0, 1fr) auto;
+  gap: 12px;
+  align-items: center;
+}
+
+.bar-chart-labels {
+  display: grid;
+  gap: 4px;
+}
+
+.bar-chart-labels strong {
+  font-size: 0.98rem;
+}
+
+.bar-chart-track {
+  position: relative;
+  height: 12px;
+  border-radius: 999px;
+  overflow: hidden;
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.bar-chart-fill {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(135deg, #48b7ff, #5b42f3);
+}
+
+.bar-chart-fill--2 {
+  background: linear-gradient(135deg, #55d98c, #1dbd70);
+}
+
+.bar-chart-fill--3 {
+  background: linear-gradient(135deg, #f7be67, #ef8e35);
+}
+
+.bar-chart-fill--4 {
+  background: linear-gradient(135deg, #8ee7d3, #2db0ff);
+}
+
+.bar-chart-value {
+  min-width: 42px;
+  text-align: right;
+}
+
+.trend-chart-shell {
+  display: grid;
+  gap: 18px;
+  margin-top: 18px;
+}
+
+.trend-chart-bars {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 16px;
+  min-height: 240px;
+  align-items: end;
+}
+
+.trend-bar-group {
+  display: grid;
+  justify-items: center;
+  gap: 10px;
+}
+
+.trend-bar-stack {
+  width: 100%;
+  min-height: 210px;
+  display: flex;
+  align-items: end;
+  justify-content: center;
+  gap: 8px;
+}
+
+.trend-bar {
+  width: 24px;
+  min-height: 8px;
+  border-radius: 14px 14px 6px 6px;
+}
+
+.trend-bar--issued {
+  background: linear-gradient(180deg, rgba(73, 186, 255, 0.98), rgba(47, 118, 250, 0.84));
+  box-shadow: 0 10px 24px rgba(49, 116, 247, 0.22);
+}
+
+.trend-bar--students {
+  background: linear-gradient(180deg, rgba(113, 232, 174, 0.98), rgba(56, 179, 110, 0.82));
+  box-shadow: 0 10px 24px rgba(56, 179, 110, 0.18);
+}
+
+.trend-bar-group strong {
+  color: var(--muted);
+  font-size: 0.86rem;
+}
+
+.trend-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 14px;
+  color: var(--muted);
+}
+
+.trend-legend span {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.legend-swatch {
+  width: 14px;
+  height: 14px;
+  border-radius: 999px;
+  display: inline-block;
+}
+
+.legend-swatch--issued {
+  background: #4099ff;
+}
+
+.legend-swatch--students {
+  background: #49ca86;
+}
+
+.activity-mini-list {
+  display: grid;
+  gap: 12px;
+  margin-top: 18px;
+}
+
+.activity-mini-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 14px 16px;
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.035);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.activity-mini-item div {
+  display: grid;
+  gap: 4px;
+}
+
+.activity-mini-item small {
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+.simple-overview-header {
+  padding: 20px;
+  border-radius: 16px;
+  background: linear-gradient(180deg, rgba(14, 16, 48, 0.98), rgba(16, 18, 56, 0.96));
+  box-shadow: 0 12px 28px rgba(8, 10, 36, 0.42);
+}
+
+.simple-overview-header h2 {
+  margin: 10px 0 10px;
+  font-size: clamp(1.7rem, 2.6vw, 2.4rem);
+}
+
+.hero-metrics-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 240px;
+  gap: 14px;
+}
+
+.hero-metrics-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.simple-hero-grid {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.hero-metric-card {
+  position: relative;
+  overflow: hidden;
+  min-height: 136px;
+  padding: 18px 18px 16px;
+  border-radius: 16px;
+  background:
+    radial-gradient(circle at bottom center, rgba(80, 90, 255, 0.14), transparent 46%),
+    linear-gradient(180deg, rgba(14, 16, 48, 0.98), rgba(16, 18, 56, 0.96));
+  box-shadow: 0 12px 28px rgba(8, 10, 36, 0.42);
+}
+
+.hero-metric-card strong {
+  display: block;
+  margin: 10px 0 8px;
+  font-size: 2rem;
+  letter-spacing: -0.04em;
+}
+
+.hero-metric-card p {
+  margin: 0;
+  max-width: 14rem;
+  color: var(--muted);
+  line-height: 1.55;
+}
+
+.hero-metric-label-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  color: rgba(236, 241, 255, 0.82);
+}
+
+.hero-metric-label-row span:first-child {
+  font-size: 0.98rem;
+}
+
+.metric-arrow {
+  color: rgba(236, 241, 255, 0.55);
+}
+
+.hero-metric-card--spotlight {
+  border-color: rgba(95, 74, 255, 0.18);
+}
+
+.status-ring {
+  position: absolute;
+  right: 14px;
+  bottom: 14px;
+  width: 96px;
+  height: 64px;
+  border-radius: 999px;
+  border: 0;
+  background:
+    radial-gradient(circle at 10% 85%, rgba(130, 59, 255, 0.88) 0 2px, transparent 3px),
+    radial-gradient(circle at 50% 22%, rgba(182, 71, 255, 0.98) 0 3px, transparent 4px),
+    radial-gradient(circle at 88% 78%, rgba(113, 215, 255, 0.98) 0 2px, transparent 3px);
+  opacity: 0.95;
+}
+
+.hero-metric-card--wave {
+  overflow: hidden;
+}
+
+.metric-wave {
+  position: absolute;
+  right: 14px;
+  bottom: 18px;
+  width: 96px;
+  height: 34px;
+  background:
+    radial-gradient(circle at 10% 84%, rgba(47, 202, 255, 0.95) 0 2px, transparent 3px),
+    radial-gradient(circle at 44% 38%, rgba(47, 202, 255, 0.95) 0 2px, transparent 3px),
+    radial-gradient(circle at 80% 72%, rgba(47, 202, 255, 0.95) 0 2px, transparent 3px);
+  opacity: 0.9;
+}
+
+.actions-card {
+  padding: 18px;
+  border-radius: 16px;
+  background: linear-gradient(180deg, rgba(14, 16, 48, 0.98), rgba(16, 18, 56, 0.96));
+  box-shadow: 0 12px 28px rgba(8, 10, 36, 0.42);
+}
+
+.actions-card-header {
+  margin-bottom: 16px;
+}
+
+.actions-card-header h3 {
+  margin: 0;
+}
+
+.actions-list {
+  display: grid;
+  gap: 12px;
+}
+
+.action-chip {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 50px;
+  padding: 12px 16px;
+  border-radius: 12px;
+  color: #f8fbff;
+  text-decoration: none;
+  font-weight: 700;
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.08);
+}
+
+.action-chip-icon {
+  width: 26px;
+  height: 26px;
+  border-radius: 10px;
+  display: grid;
+  place-items: center;
+  background: rgba(255, 255, 255, 0.14);
+  font-size: 0.76rem;
+}
+
+.action-chip--green {
+  background: linear-gradient(135deg, rgba(57, 163, 81, 0.96), rgba(45, 132, 67, 0.86));
+}
+
+.action-chip--emerald {
+  background: linear-gradient(135deg, rgba(49, 193, 143, 0.96), rgba(40, 147, 112, 0.86));
+}
+
+.action-chip--amber {
+  background: linear-gradient(135deg, rgba(255, 156, 50, 0.96), rgba(214, 117, 24, 0.86));
+}
+
+.workflow-panel {
+  padding: 20px 20px;
+  border-radius: 16px;
+  background: linear-gradient(180deg, rgba(14, 16, 48, 0.98), rgba(16, 18, 56, 0.96));
+  box-shadow: 0 12px 28px rgba(8, 10, 36, 0.42);
+}
+
+.workflow-header {
+  margin-bottom: 18px;
+}
+
+.workflow-chip {
+  padding: 8px 12px;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.045);
+  color: var(--muted);
+}
+
+.workflow-line {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 16px;
+}
+
+.workflow-step {
+  position: relative;
+  display: grid;
+  justify-items: center;
+  gap: 14px;
+  text-align: center;
+}
+
+.workflow-step::before {
+  content: "";
+  position: absolute;
+  top: 10px;
+  left: calc(-50% + 10px);
+  width: calc(100% - 20px);
+  height: 4px;
+  border-radius: 999px;
+  background: rgba(213, 222, 255, 0.22);
+}
+
+.workflow-step:first-child::before {
+  display: none;
+}
+
+.workflow-step strong {
+  color: rgba(240, 244, 255, 0.82);
+  font-weight: 500;
+}
+
+.workflow-dot {
+  position: relative;
+  width: 20px;
+  height: 20px;
+  border-radius: 999px;
+  background: rgba(214, 220, 236, 0.8);
+}
+
+.workflow-step.is-complete::before {
+  background: rgba(214, 220, 236, 0.9);
+}
+
+.workflow-step.is-current .workflow-dot {
+  background: #f3efe8;
+  box-shadow:
+    0 0 0 5px rgba(253, 212, 118, 0.22),
+    0 0 28px rgba(255, 211, 126, 0.48);
+}
+
+.focus-insights-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 16px;
+}
+
+.simple-focus-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.focus-panel {
+  padding: 20px;
+  border-radius: 16px;
+  background: linear-gradient(180deg, rgba(14, 16, 48, 0.98), rgba(16, 18, 56, 0.96));
+  box-shadow: 0 12px 28px rgba(8, 10, 36, 0.42);
+}
+
+.focus-panel h3 {
+  margin: 10px 0 14px;
+  font-size: clamp(1.9rem, 2.8vw, 3rem);
+  letter-spacing: -0.04em;
+}
+
+.mini-bars {
+  display: flex;
+  align-items: end;
+  gap: 16px;
+  min-height: 130px;
+  margin-top: 20px;
+}
+
+.mini-bar-item {
+  display: grid;
+  justify-items: center;
+  gap: 8px;
+  min-width: 54px;
+}
+
+.mini-bar-fill {
+  width: 36px;
+  border-radius: 10px 10px 6px 6px;
+  background: linear-gradient(180deg, rgba(123, 239, 146, 0.98), rgba(72, 177, 96, 0.78));
+  box-shadow: 0 10px 24px rgba(78, 192, 104, 0.2);
+}
+
+.mini-bar-fill--2 {
+  background: linear-gradient(180deg, rgba(117, 220, 128, 0.98), rgba(68, 169, 81, 0.82));
+}
+
+.mini-bar-fill--3 {
+  background: linear-gradient(180deg, rgba(247, 191, 95, 0.98), rgba(225, 145, 47, 0.82));
+}
+
+.mini-bar-item strong {
+  font-size: 0.94rem;
+}
+
+.mini-bar-item small {
+  color: var(--muted);
+}
+
+.news-spark {
+  margin-top: 28px;
+  height: 48px;
+  position: relative;
+}
+
+.news-spark-line {
+  position: absolute;
+  inset: 12px 0 0 auto;
+  width: 96px;
+  height: 24px;
+  border-bottom: 3px solid rgba(125, 211, 252, 0.88);
+  border-radius: 999px;
+  transform: skewX(-24deg);
+  opacity: 0.85;
+}
+
+.operations-panel {
+  padding: 22px 20px;
+  border-radius: 16px;
+  background: linear-gradient(180deg, rgba(14, 16, 48, 0.98), rgba(16, 18, 56, 0.96));
+  box-shadow: 0 12px 28px rgba(8, 10, 36, 0.42);
+}
+
+.activity-feed {
+  display: grid;
+  gap: 10px;
+}
+
+.activity-item {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  min-height: 58px;
+  padding: 12px 14px;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.025);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.activity-icon {
+  width: 38px;
+  height: 38px;
+  border-radius: 999px;
+  display: grid;
+  place-items: center;
+  font-weight: 700;
+  color: #fff;
+  background: linear-gradient(135deg, #5b42f3, #2db0ff);
+}
+
+.activity-icon--qr {
+  background: linear-gradient(135deg, #2db0ff, #1fe3be);
+}
+
+.activity-copy {
+  display: grid;
+  gap: 4px;
+}
+
+.activity-copy span {
+  color: var(--muted);
+}
+
+.section-hidden {
+  display: none;
+}
+
+.hero-panel,
+.panel-card {
+  padding: 28px;
+}
+
+.workspace-shell {
+  display: grid;
+  grid-template-columns: 290px minmax(0, 1fr);
+  gap: 22px;
+}
+
+.ops-sidebar {
+  position: sticky;
+  top: 24px;
+  align-self: start;
+  padding: 24px;
+  display: grid;
+  gap: 18px;
+}
+
+.sidebar-block {
+  display: grid;
+  gap: 12px;
+}
+
+.sidebar-copy,
+.module-copy,
+.panel-copy {
+  margin: 0;
+  color: var(--muted);
+  line-height: 1.7;
+}
+
+.sidebar-summary {
+  padding: 18px;
+  border-radius: 22px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.detail-item {
+  display: grid;
+  gap: 6px;
+  padding: 10px 0;
+}
+
+.detail-item + .detail-item {
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.detail-item span {
+  color: var(--muted);
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+}
+
+.detail-item strong {
+  font-size: 0.95rem;
+  line-height: 1.5;
+}
+
+.ops-nav {
+  display: grid;
+  gap: 10px;
+}
+
+.ops-nav-link {
+  display: grid;
+  gap: 4px;
+  padding: 14px 16px;
+  border-radius: 18px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--text);
+  text-decoration: none;
+  transition: transform 180ms ease, border-color 180ms ease, background 180ms ease;
+}
+
+.ops-nav-link:hover {
+  transform: translateY(-1px);
+  border-color: rgba(125, 211, 252, 0.35);
+  background: rgba(125, 211, 252, 0.08);
+}
+
+.ops-nav-link small {
+  color: var(--muted);
+  line-height: 1.45;
+}
+
+.ops-main {
+  display: grid;
+  gap: 22px;
+}
+
+.hero-panel {
+  display: grid;
+  grid-template-columns: 1.2fr 0.8fr;
+  gap: 24px;
+}
+
+.hero-copy p:last-of-type {
+  color: var(--muted);
+  line-height: 1.7;
+}
+
+.hero-actions {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 20px;
+}
+
+.hero-actions p {
+  margin: 0;
+  color: var(--muted);
+}
+
+.hero-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.link-button {
+  text-decoration: none;
+}
+
+.hero-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-top: 22px;
+}
+
+.hero-tag {
+  color: var(--text);
+}
+
+.stats-grid {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 16px;
+}
+
+.stat-card {
+  padding: 22px;
+}
+
+.stat-card span {
+  display: block;
+  color: var(--muted);
+  margin-bottom: 20px;
+}
+
+.stat-card strong {
+  display: block;
+  font-size: 1.8rem;
+  margin-bottom: 12px;
+}
+
+.stat-card small {
+  color: var(--muted);
+  line-height: 1.5;
+}
+
+.content-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 20px;
+}
+
+.content-grid--sidebar {
+  grid-template-columns: minmax(0, 1.15fr) minmax(320px, 0.85fr);
+}
+
+.page-aside {
+  display: grid;
+  gap: 18px;
+  align-content: start;
+}
+
+.module-section {
+  display: grid;
+  gap: 16px;
+  scroll-margin-top: 24px;
+}
+
+.module-header {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 20px;
+}
+
+.module-header h3 {
+  font-size: 1.8rem;
+}
+
+.module-copy {
+  max-width: 500px;
+}
+
+.section-row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 18px;
+}
+
+.section-row.compact {
+  margin-bottom: 12px;
+}
+
+.section-row h3 {
+  font-size: 1.55rem;
+}
+
+.app-impact-card,
+.app-preview-card {
+  padding: 24px;
+}
+
+.app-impact-list,
+.app-preview-list {
+  display: grid;
+  gap: 12px;
+  margin-top: 16px;
+}
+
+.app-impact-item,
+.app-preview-item {
+  display: grid;
+  gap: 6px;
+  padding: 14px 16px;
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.app-impact-item span,
+.app-preview-item span {
+  color: var(--muted);
+  line-height: 1.5;
+}
+
+.app-impact-item strong,
+.app-preview-item strong {
+  font-size: 0.98rem;
+}
+
+.app-impact-body {
+  margin: 16px 0 0;
+  color: var(--muted);
+  line-height: 1.7;
+}
+
+.meal-row,
+.menu-editor {
+  padding: 18px;
+  border-radius: 22px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.meal-row {
+  display: grid;
+  grid-template-columns: 1fr 180px 180px;
+  gap: 14px;
+  align-items: end;
+}
+
+.meal-row strong {
+  display: block;
+  margin-bottom: 6px;
+  font-size: 1rem;
+}
+
+.meal-row p {
+  margin: 0;
+  color: var(--muted);
+}
+
+.menu-editor textarea {
+  min-height: 140px;
+}
+
+.session-qr-controls {
+  margin-bottom: 18px;
+}
+
+.qr-shell {
+  display: grid;
+  grid-template-columns: 220px 1fr;
+  gap: 22px;
+  align-items: center;
+  padding: 20px;
+  border-radius: 22px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+#sessionQrCanvas {
+  width: 220px;
+  height: 220px;
+  border-radius: 22px;
+  background: #f7f7f7;
+}
+
+.qr-caption strong {
+  display: block;
+  font-size: 1.15rem;
+  margin-bottom: 8px;
+}
+
+.qr-caption p,
+.validator-result p,
+.news-card p {
+  margin: 0;
+  color: var(--muted);
+  line-height: 1.65;
+}
+
+.validator-result,
+.empty-card {
+  margin-top: 18px;
+  padding: 18px;
+  border-radius: 20px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--muted);
+}
+
+.validator-result.success {
+  color: var(--text);
+  border-color: rgba(134, 239, 172, 0.16);
+  background: rgba(134, 239, 172, 0.08);
+}
+
+.validator-result strong {
+  display: block;
+  margin-bottom: 10px;
+}
+
+.news-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 0.95fr) minmax(0, 1.05fr);
+  gap: 20px;
+}
+
+.dual-field-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+}
+
+.news-column {
+  display: grid;
+  gap: 16px;
+}
+
+.news-card {
+  padding: 22px;
+}
+
+.news-card h4 {
+  margin: 10px 0 12px;
+  font-size: 1.15rem;
+}
+
+.news-actions {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.news-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-top: 18px;
+  color: var(--muted);
+  font-size: 0.88rem;
+}
+
+.news-badge {
+  color: var(--accent);
+  padding: 8px 12px;
+}
+
+.table-shell {
+  overflow-x: auto;
+}
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+th,
+td {
+  padding: 14px 10px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  text-align: left;
+}
+
+th {
+  color: var(--muted);
+  font-size: 0.82rem;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+}
+
+.table-pill.issued {
+  color: var(--warning);
+  background: rgba(249, 217, 118, 0.1);
+}
+
+.table-pill.redeemed {
+  color: var(--success);
+  background: rgba(134, 239, 172, 0.1);
+}
+
+.table-pill.expired {
+  color: var(--danger);
+  background: rgba(255, 125, 125, 0.1);
+}
+
+.loading-shell {
+  min-height: 420px;
+  display: grid;
+  place-items: center;
+  gap: 16px;
+}
+
+.loader-ring {
+  width: 58px;
+  height: 58px;
+  border-radius: 999px;
+  border: 5px solid rgba(255, 255, 255, 0.1);
+  border-top-color: var(--accent);
+  animation: spin 0.9s linear infinite;
+}
+
+.flash-stack {
+  position: fixed;
+  top: 26px;
+  right: 26px;
+  z-index: 50;
+  display: grid;
+  gap: 12px;
+}
+
+.flash-card {
+  min-width: 280px;
+  max-width: 380px;
+  padding: 14px 16px;
+  border-radius: 18px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(9, 16, 30, 0.92);
+  box-shadow: var(--shadow);
+  transition: transform 220ms ease, opacity 220ms ease;
+}
+
+.flash-card.success {
+  border-color: rgba(134, 239, 172, 0.2);
+  color: var(--success);
+}
+
+.flash-card.danger {
+  border-color: rgba(255, 125, 125, 0.22);
+  color: var(--danger);
+}
+
+.flash-card.info {
+  border-color: rgba(125, 211, 252, 0.22);
+  color: var(--accent);
+}
+
+.flash-card.leaving {
+  opacity: 0;
+  transform: translateY(-8px);
+}
+
+.hidden {
+  display: none !important;
+}
+
+code {
+  padding: 3px 8px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.08);
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (max-width: 1180px) {
+  .overview-kpi-grid,
+  .dashboard-chart-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
-  const { protocol, hostname, origin } = window.location;
-  if (protocol === "http:" || protocol === "https:") {
-    if (hostname === "localhost" || hostname === "127.0.0.1") {
-      return "http://localhost:3000";
-    }
-    return normalizeApiBaseUrl(origin);
+  .focus-insights-grid {
+    grid-template-columns: 1fr;
   }
 
-  return "http://localhost:3000";
-}
+  .hero-metrics-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
 
-function getStoredApiBaseUrl() {
-  const storedUrl = normalizeApiBaseUrl(localStorage.getItem(API_BASE_STORAGE_KEY));
-  return storedUrl || resolveDefaultApiBaseUrl();
-}
+  .workflow-line {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
 
-function setApiBaseUrl(value) {
-  const normalized = normalizeApiBaseUrl(value);
-  state.apiBaseUrl = normalized || resolveDefaultApiBaseUrl();
-  localStorage.setItem(API_BASE_STORAGE_KEY, state.apiBaseUrl);
-}
+  .overview-grid,
+  .stats-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
 
-const state = {
-  token: localStorage.getItem(AUTH_STORAGE_KEY) || "",
-  apiBaseUrl: getStoredApiBaseUrl(),
-  dashboard: null,
-  content: null,
-  sessionQr: null,
-  validationResult: null,
-  sidebarOpen: false,
-  profileMenuOpen: false,
-  workspaceQuery: "",
-  serverStatusMessage: "Backend connection pending",
-  serverStatusTone: "neutral",
-  loading: false,
-};
+  .dashboard-shell {
+    grid-template-columns: 1fr;
+  }
 
-const appRoot = document.getElementById("appRoot");
-const serverStatus = document.getElementById("serverStatus");
-const logoutButton = document.getElementById("logoutButton");
-const shellTopbar = document.querySelector(".topbar");
-const pageShell = document.querySelector(".page-shell");
+  .dashboard-toolbar,
+  .content-header,
+  .login-panel,
+  .content-grid,
+  .news-layout {
+    grid-template-columns: 1fr;
+  }
 
-const WORKSPACE_SECTIONS = [
-  { key: "overview", label: "Dashboard", detail: "Cafeteria overview", terms: ["dashboard", "overview", "home", "summary"] },
-  { key: "service", label: "Meal Hours", detail: "Opening times and counter QR", terms: ["service", "meal", "windows", "schedule", "hours", "qr", "counter"] },
-  { key: "menu", label: "Daily Menu", detail: "Breakfast, lunch, and dinner", terms: ["menu", "publishing", "breakfast", "lunch", "dinner", "meals"] },
-  { key: "news", label: "Notices", detail: "Student announcements", terms: ["news", "announcement", "broadcast", "draft", "published", "notice"] },
-  { key: "validation", label: "Scan QR", detail: "Redeem student coupons", terms: ["validation", "redeem", "coupon", "token", "operator", "scan"] },
-  { key: "activity", label: "Student Records", detail: "Recent coupon activity", terms: ["activity", "log", "redemption", "history", "audit", "records"] },
-];
-
-function pageUrl(sectionKey) {
-  return sectionKey === "overview" ? "./index.html" : `./index.html?page=${encodeURIComponent(sectionKey)}`;
-}
-
-function getCurrentPageKey() {
-  const page = new URLSearchParams(window.location.search).get("page");
-  if (!page) return "overview";
-  const matched = WORKSPACE_SECTIONS.find((section) => section.key === page);
-  return matched ? matched.key : "overview";
-}
-
-function escapeHtml(value) {
-  return String(value ?? "")
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&#039;");
-}
-
-function formatDateTime(value) {
-  if (!value) return "Not scheduled";
-  return String(value).replace("T", " ").slice(0, 16);
-}
-
-function toDateTimeLocal(value) {
-  if (!value) return "";
-  return String(value).replace(" ", "T").slice(0, 16);
-}
-
-function setServerStatus(message, tone = "neutral") {
-  state.serverStatusMessage = message;
-  state.serverStatusTone = tone;
-  serverStatus.textContent = message;
-  serverStatus.dataset.tone = tone;
-
-  const workspaceServerStatus = document.getElementById("workspaceServerStatus");
-  if (workspaceServerStatus) {
-    workspaceServerStatus.textContent = message;
-    workspaceServerStatus.className = `toolbar-chip ${tone}`;
+  .module-header {
+    display: grid;
   }
 }
 
-function showFlash(message, tone = "info") {
-  let flashStack = document.getElementById("flashStack");
-  if (!flashStack) {
-    flashStack = document.createElement("div");
-    flashStack.id = "flashStack";
-    flashStack.className = "flash-stack";
-    document.body.appendChild(flashStack);
+@media (max-width: 860px) {
+  .overview-intro-card,
+  .activity-mini-item {
+    flex-direction: column;
+    align-items: flex-start;
   }
 
-  const flash = document.createElement("div");
-  flash.className = `flash-card ${tone}`;
-  flash.textContent = message;
-  flashStack.appendChild(flash);
-
-  window.setTimeout(() => {
-    flash.classList.add("leaving");
-    window.setTimeout(() => flash.remove(), 260);
-  }, 3200);
-}
-
-function syncProfileMenu() {
-  const profileMenu = document.querySelector(".profile-menu");
-  const profileMenuButton = document.getElementById("profileMenuButton");
-  const profileCaret = document.querySelector(".profile-caret");
-  const profileDropdown = document.querySelector(".profile-dropdown");
-  const dashboardLogoutButton = document.getElementById("dashboardLogoutButton");
-
-  if (profileMenu) {
-    profileMenu.classList.toggle("is-open", state.profileMenuOpen);
+  .page-shell {
+    width: min(100vw - 24px, 100%);
+    padding-top: 16px;
   }
 
-  if (profileMenuButton) {
-    profileMenuButton.setAttribute("aria-expanded", state.profileMenuOpen ? "true" : "false");
+  .topbar {
+    flex-direction: column;
+    align-items: flex-start;
   }
 
-  if (profileCaret) {
-    profileCaret.textContent = state.profileMenuOpen ? "Ë„" : "Ë…";
+  .hero-metrics-grid,
+  .overview-kpi-grid,
+  .dashboard-chart-grid,
+  .overview-grid,
+  .stats-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
-  if (profileDropdown) {
-    profileDropdown.classList.toggle("is-open", state.profileMenuOpen);
-  }
-}
-
-function setProfileMenuOpen(isOpen) {
-  state.profileMenuOpen = Boolean(isOpen);
-  syncProfileMenu();
-}
-
-function handleDocumentClick(event) {
-  if (!state.profileMenuOpen) return;
-
-  const profileMenu = document.querySelector(".profile-menu");
-  if (profileMenu && profileMenu.contains(event.target)) {
-    return;
+  .simple-focus-grid {
+    grid-template-columns: 1fr;
   }
 
-  setProfileMenuOpen(false);
-}
-
-async function api(path, options = {}) {
-  const request = {
-    method: options.method || "GET",
-    headers: {
-      "Content-Type": "application/json",
-      ...(options.headers || {}),
-    },
-  };
-
-  if (state.token && options.auth !== false) {
-    request.headers.Authorization = `Bearer ${state.token}`;
+  .workflow-line,
+  .dashboard-toolbar {
+    flex-direction: column;
+    align-items: stretch;
   }
 
-  if (options.body) {
-    request.body = JSON.stringify(options.body);
+  .workflow-line {
+    grid-template-columns: 1fr;
   }
 
-  let response;
-  try {
-    response = await fetch(`${state.apiBaseUrl}${path}`, request);
-  } catch (error) {
-    throw new Error(`Cannot reach the admin API at ${state.apiBaseUrl}. Check the API base URL and backend availability.`);
+  .toolbar-actions,
+  .content-shortcuts,
+  .hero-links {
+    justify-content: flex-start;
   }
 
-  const rawPayload = await response.text();
-  if (!rawPayload.trim()) {
-    const error = new Error(`The API at ${state.apiBaseUrl} returned an empty response for ${path}.`);
-    error.status = response.status;
-    throw error;
+  .dashboard-sidebar {
+    width: min(260px, calc(100vw - 32px));
   }
 
-  let payload = {};
-  try {
-    payload = JSON.parse(rawPayload);
-  } catch (error) {
-    const parseError = new Error(`The API at ${state.apiBaseUrl} did not return JSON for ${path}.`);
-    parseError.status = response.status;
-    throw parseError;
+  .meal-row,
+  .dual-field-grid,
+  .snapshot-grid,
+  .qr-shell {
+    grid-template-columns: 1fr;
   }
 
-  if (!response.ok || payload.status === "error") {
-    const error = new Error(payload.message || "Request failed");
-    error.status = response.status;
-    throw error;
+  .bar-chart-row {
+    grid-template-columns: 1fr;
   }
 
-  return payload.data ?? payload;
-}
+  .trend-chart-bars {
+    gap: 10px;
+  }
 
-async function checkHealth() {
-  try {
-    const data = await api("/health", { auth: false });
-    const label = data.activeMeal?.isActive
-      ? `${data.activeMeal.mealName} is live`
-      : `Connected Â· ${data.timeZone}`;
-    setServerStatus(label, "success");
-  } catch (error) {
-    setServerStatus("Backend unavailable", "danger");
+  .module-header {
+    display: grid;
+  }
+
+  .hero-links {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  #sessionQrCanvas {
+    margin: 0 auto;
   }
 }
 
-async function login(username, password) {
-  state.loading = true;
-  render();
-
-  try {
-    const data = await api("/admin/login", {
-      method: "POST",
-      auth: false,
-      body: { username, password },
-    });
-
-    const token = data?.token;
-
-    if (!token) {
-      throw new Error("Login response did not include an admin token");
-    }
-
-    state.token = token;
-    localStorage.setItem(AUTH_STORAGE_KEY, state.token);
-    showFlash("Admin session started", "success");
-    await loadDashboard();
-  } catch (error) {
-    state.loading = false;
-    render();
-    showFlash(error.message || "Unable to sign in", "danger");
-  }
-}
-
-function logout() {
-  state.token = "";
-  state.dashboard = null;
-  state.content = null;
-  state.sessionQr = null;
-  state.validationResult = null;
-  state.sidebarOpen = false;
-  state.profileMenuOpen = false;
-  state.loading = false;
-  localStorage.removeItem(AUTH_STORAGE_KEY);
-  render();
-  showFlash("Logged out", "info");
-}
-
-async function loadDashboard() {
-  state.loading = true;
-  render();
-
-  try {
-    const [dashboard, content] = await Promise.all([
-      api("/admin/dashboard"),
-      api("/admin/content"),
-    ]);
-
-    state.dashboard = dashboard;
-    state.content = content;
-    state.loading = false;
-    render();
-  } catch (error) {
-    state.loading = false;
-    if (error.status === 401) {
-      logout();
-      showFlash("Your admin session expired. Please log in again.", "danger");
-      return;
-    }
-    render();
-    showFlash(error.message || "Unable to load dashboard", "danger");
-  }
-}
-
-function loginMarkup() {
-  return `
-    <section class="login-shell">
-      <div class="login-panel glass-card">
-        <div class="login-copy">
-          <p class="eyebrow">Cafeteria management dashboard</p>
-          <h2>Manage meal hours, live QR service, daily menus, and student notices.</h2>
-          <p>
-            This website links directly to your cafeteria backend, so updates made here can flow into the student application.
-          </p>
-          <div class="feature-list">
-            <div class="feature-chip">Live QR issue + validation</div>
-            <div class="feature-chip">Daily menu publishing</div>
-            <div class="feature-chip">News distribution to the app</div>
-          </div>
-        </div>
-        <form id="loginForm" class="auth-form">
-          <label>
-            <span>API base URL</span>
-            <input
-              name="apiBaseUrl"
-              type="url"
-              placeholder="http://localhost:3000"
-              value="${escapeHtml(state.apiBaseUrl)}"
-              required
-            />
-          </label>
-          <label>
-            <span>Admin username</span>
-            <input name="username" type="text" placeholder="admin" required />
-          </label>
-          <label>
-            <span>Password</span>
-            <input name="password" type="password" placeholder="Enter password" required />
-          </label>
-          <button type="submit" class="primary-button" ${state.loading ? "disabled" : ""}>
-            ${state.loading ? "Signing in..." : "Enter Control Room"}
-          </button>
-          <p class="helper-copy">
-            These credentials come from your backend <code>.env</code> file. The API base URL is saved in this browser so you can correct it without editing code again.
-          </p>
-        </form>
-      </div>
-    </section>
-  `;
-}
-
-function statCardMarkup(label, value, detail) {
-  return `
-    <article class="stat-card glass-card">
-      <span>${escapeHtml(label)}</span>
-      <strong>${escapeHtml(value)}</strong>
-      <small>${escapeHtml(detail)}</small>
-    </article>
-  `;
-}
-
-function formatRelativeTime(value) {
-  if (!value) return "just now";
-
-  const parsed = new Date(String(value).replace(" ", "T"));
-  if (Number.isNaN(parsed.getTime())) return "recently";
-
-  const seconds = Math.max(0, Math.floor((Date.now() - parsed.getTime()) / 1000));
-  if (seconds < 60) return `${seconds || 1}s ago`;
-  if (seconds < 3600) return `${Math.floor(seconds / 60)}m ago`;
-  if (seconds < 86400) return `${Math.floor(seconds / 3600)}h ago`;
-  return `${Math.floor(seconds / 86400)}d ago`;
-}
-
-function detailItemMarkup(label, value) {
-  return `
-    <div class="detail-item">
-      <span>${escapeHtml(label)}</span>
-      <strong>${escapeHtml(value || "Not available")}</strong>
-    </div>
-  `;
-}
-
-const NAV_ICON_LABELS = {
-  overview: "H",
-  service: "S",
-  menu: "M",
-  news: "N",
-  validation: "Q",
-  activity: "A",
-};
-
-function navLinkMarkup(section) {
-  return `
-    <a class="dashboard-nav-link ${state.currentPage === section.key ? "is-active" : ""}" data-key="${escapeHtml(section.key)}" href="${escapeHtml(pageUrl(section.key))}">
-      <span class="nav-icon">${escapeHtml(NAV_ICON_LABELS[section.key] || section.label.charAt(0))}</span>
-      <div class="nav-copy">
-        <strong>${escapeHtml(section.label)}</strong>
-        <small>${escapeHtml(section.detail)}</small>
-      </div>
-    </a>
-  `;
-}
-
-function resolveWorkspaceSection(query) {
-  const normalizedQuery = String(query || "").trim().toLowerCase();
-  if (!normalizedQuery) return null;
-  return WORKSPACE_SECTIONS.find((section) =>
-    section.terms.some((term) => term.includes(normalizedQuery) || normalizedQuery.includes(term)),
-  ) || null;
-}
-
-function overviewCardMarkup(sectionKey, title, detail, metricLabel, metricValue) {
-  return `
-    <article class="overview-card glass-card">
-      <span>${escapeHtml(metricLabel)}</span>
-      <strong>${escapeHtml(metricValue)}</strong>
-      <p>${escapeHtml(detail)}</p>
-      <a class="secondary-button link-button" href="${escapeHtml(pageUrl(sectionKey))}">Open ${escapeHtml(title)}</a>
-    </article>
-  `;
-}
-
-function appImpactCardMarkup(title, subtitle, body, items = []) {
-  return `
-    <article class="glass-card panel-card app-impact-card">
-      <div class="section-row compact">
-        <div>
-          <p class="eyebrow">Student app link</p>
-          <h3>${escapeHtml(title)}</h3>
-        </div>
-      </div>
-      <p class="panel-copy">${escapeHtml(subtitle)}</p>
-      ${items.length
-        ? `<div class="app-impact-list">
-            ${items
-              .map(
-                (item) => `
-                  <div class="app-impact-item">
-                    <span>${escapeHtml(item.label)}</span>
-                    <strong>${escapeHtml(item.value)}</strong>
-                  </div>
-                `,
-              )
-              .join("")}
-          </div>`
-        : ""}
-      <p class="app-impact-body">${escapeHtml(body)}</p>
-    </article>
-  `;
-}
-
-function menuPreviewMarkup(menus) {
-  return `
-    <article class="glass-card panel-card app-preview-card">
-      <div class="section-row compact">
-        <div>
-          <p class="eyebrow">App preview</p>
-          <h3>Menu tab snapshot</h3>
-        </div>
-      </div>
-      <div class="app-preview-list">
-        ${menus
-          .map(
-            (menu) => `
-              <div class="app-preview-item">
-                <strong>${escapeHtml(menu.mealName)}</strong>
-                <span>${escapeHtml((menu.items || []).slice(0, 3).join(", ") || "No items published yet")}</span>
-              </div>
-            `,
-          )
-          .join("")}
-      </div>
-    </article>
-  `;
-}
-
-function newsPreviewMarkup(news) {
-  const visibleNews = news.filter((item) => item.status === "published").slice(0, 4);
-  return `
-    <article class="glass-card panel-card app-preview-card">
-      <div class="section-row compact">
-        <div>
-          <p class="eyebrow">App preview</p>
-          <h3>News feed snapshot</h3>
-        </div>
-      </div>
-      <div class="app-preview-list">
-        ${(visibleNews.length ? visibleNews : news.slice(0, 4))
-          .map(
-            (item) => `
-              <div class="app-preview-item">
-                <strong>${escapeHtml(item.title || "Announcement")}</strong>
-                <span>${escapeHtml(item.status || "published")} Â· ${escapeHtml(formatDateTime(item.publishAt))}</span>
-              </div>
-            `,
-          )
-          .join("") || `<div class="empty-card">No announcement preview available yet.</div>`}
-      </div>
-    </article>
-  `;
-}
-
-function pageHeaderMarkup(eyebrow, title, description, actionsMarkup = "", detailMarkup = "") {
-  return `
-    <section class="content-header glass-card page-view-header">
-      <div class="content-heading">
-        <p class="eyebrow">${escapeHtml(eyebrow)}</p>
-        <h2>${escapeHtml(title)}</h2>
-        <p>${escapeHtml(description)}</p>
-      </div>
-      <div class="content-meta">
-        ${actionsMarkup ? `<div class="content-shortcuts">${actionsMarkup}</div>` : ""}
-        ${detailMarkup ? `<p class="search-hint">${detailMarkup}</p>` : ""}
-      </div>
-    </section>
-  `;
-}
-
-function mealWindowRows(windows) {
-  return windows
-    .map(
-      (window) => `
-        <div class="meal-row">
-          <div>
-            <strong>${escapeHtml(window.mealName)}</strong>
-            <p>${escapeHtml(window.mealCode)}</p>
-          </div>
-          <label>
-            <span>Start</span>
-            <input type="time" name="${escapeHtml(window.mealCode)}_start" value="${escapeHtml(String(window.startTime).slice(0, 5))}" />
-          </label>
-          <label>
-            <span>End</span>
-            <input type="time" name="${escapeHtml(window.mealCode)}_end" value="${escapeHtml(String(window.endTime).slice(0, 5))}" />
-          </label>
-        </div>
-      `,
-    )
-    .join("");
-}
-
-function menuEditors(menus) {
-  return menus
-    .map(
-      (menu) => `
-        <label class="menu-editor">
-          <div class="section-row">
-            <strong>${escapeHtml(menu.mealName)}</strong>
-            <span>${escapeHtml(menu.timeLabel || "")}</span>
-          </div>
-          <textarea name="${escapeHtml(menu.mealCode)}_items" rows="5" placeholder="One menu item per line">${escapeHtml((menu.items || []).join("\n"))}</textarea>
-        </label>
-      `,
-    )
-    .join("");
-}
-
-function newsCards(news) {
-  if (!news.length) {
-    return `<div class="empty-card">No news announcements have been published yet.</div>`;
+@media (max-width: 560px) {
+  .hero-metrics-grid,
+  .overview-kpi-grid,
+  .dashboard-chart-grid,
+  .overview-grid,
+  .stats-grid {
+    grid-template-columns: 1fr;
   }
 
-  return news
-    .map(
-      (item) => `
-        <article class="news-card glass-card">
-          <div class="section-row">
-            <div>
-              <span class="news-badge">${escapeHtml(item.category || "General")}</span>
-              <h4>${escapeHtml(item.title)}</h4>
-            </div>
-            <div class="news-actions">
-              <button type="button" class="secondary-button" data-edit-news="${item.id}">Edit</button>
-              <button type="button" class="danger-button" data-delete-news="${item.id}">Delete</button>
-            </div>
-          </div>
-          <p>${escapeHtml(item.body)}</p>
-          <div class="news-meta">
-            <span>Status: ${escapeHtml(item.status)}</span>
-            <span>Priority: ${escapeHtml(item.priority)}</span>
-            <span>Publish: ${escapeHtml(formatDateTime(item.publishAt))}</span>
-          </div>
-        </article>
-      `,
-    )
-    .join("");
-}
-
-function redemptionsMarkup(redemptions) {
-  if (!redemptions.length) {
-    return `<div class="empty-card">No QR redemptions have been recorded today.</div>`;
+  .page-shell.dashboard-mode {
+    width: min(100vw - 18px, 100%);
   }
 
-  return `
-    <div class="table-shell">
-      <table>
-        <thead>
-          <tr>
-            <th>Student</th>
-            <th>Coupon</th>
-            <th>Meal</th>
-            <th>Status</th>
-            <th>Issued</th>
-            <th>Redeemed</th>
-          </tr>
-        </thead>
-        <tbody>
-          ${redemptions
-            .map(
-              (item) => `
-                <tr>
-                  <td>${escapeHtml(item.studentId)}</td>
-                  <td>${escapeHtml(item.couponType)}</td>
-                  <td>${escapeHtml(item.mealCode)}</td>
-                  <td><span class="table-pill ${escapeHtml(item.status)}">${escapeHtml(item.status)}</span></td>
-                  <td>${escapeHtml(formatDateTime(item.issuedAt))}</td>
-                  <td>${escapeHtml(item.redeemedAt ? formatDateTime(item.redeemedAt) : "--")}</td>
-                </tr>
-              `,
-            )
-            .join("")}
-        </tbody>
-      </table>
-    </div>
-  `;
-}
-
-function validatorResultMarkup() {
-  if (!state.validationResult) {
-    return `
-      <div class="validator-result placeholder">
-        Scan or paste a student coupon QR token here to verify it against the live cafeteria service window.
-      </div>
-    `;
+  .hero-panel,
+  .dashboard-brand,
+  .dashboard-sidebar-panel,
+  .dashboard-toolbar,
+  .content-header,
+  .panel-card,
+  .login-panel {
+    padding: 22px;
   }
 
-  return `
-    <div class="validator-result success">
-      <strong>Redeemed successfully</strong>
-      <p>Student ID: ${escapeHtml(state.validationResult.studentId)}</p>
-      <p>Coupon: ${escapeHtml(state.validationResult.couponType)}</p>
-      <p>Meal: ${escapeHtml(state.validationResult.mealCode)}</p>
-      <p>Time: ${escapeHtml(formatDateTime(state.validationResult.redeemedAt))}</p>
-    </div>
-  `;
-}
-
-function heroMetricMarkup(label, value, detail, modifier = "", accentMarkup = "") {
-  return `
-    <article class="hero-metric-card glass-card ${modifier}">
-      <div class="hero-metric-label-row">
-        <span>${escapeHtml(label)}</span>
-        <span class="metric-arrow">></span>
-      </div>
-      <strong>${escapeHtml(value)}</strong>
-      <p>${escapeHtml(detail)}</p>
-      ${accentMarkup}
-    </article>
-  `;
-}
-
-function formatCompactNumber(value) {
-  return new Intl.NumberFormat("en", { notation: "compact", maximumFractionDigits: 1 }).format(Number(value || 0));
-}
-
-function formatShortDay(value) {
-  if (!value) return "";
-  const parsed = new Date(`${value}T00:00:00`);
-  if (Number.isNaN(parsed.getTime())) return value;
-  return parsed.toLocaleDateString("en-US", { weekday: "short" });
-}
-
-function snapshotItemMarkup(label, value, detail) {
-  return `
-    <div class="snapshot-item">
-      <span>${escapeHtml(label)}</span>
-      <strong>${escapeHtml(value)}</strong>
-      <small>${escapeHtml(detail)}</small>
-    </div>
-  `;
-}
-
-function summaryKpiMarkup(label, value, detail, modifier = "") {
-  return `
-    <article class="glass-card summary-kpi-card ${modifier}">
-      <span>${escapeHtml(label)}</span>
-      <strong>${escapeHtml(value)}</strong>
-      <small>${escapeHtml(detail)}</small>
-    </article>
-  `;
-}
-
-function barChartRowsMarkup(items, emptyMessage, valueSuffix = "") {
-  if (!items.length) {
-    return `<div class="empty-card">${escapeHtml(emptyMessage)}</div>`;
+  .auth-form {
+    padding: 20px;
   }
 
-  const maxValue = Math.max(1, ...items.map((item) => Number(item.total || item.value || 0)));
-
-  return `
-    <div class="bar-chart-list">
-      ${items
-        .map((item, index) => {
-          const total = Number(item.total || item.value || 0);
-          const width = Math.max(total > 0 ? 12 : 0, (total / maxValue) * 100);
-          return `
-            <div class="bar-chart-row">
-              <div class="bar-chart-labels">
-                <strong>${escapeHtml(item.label || item.mealName || item.couponType || "Item")}</strong>
-                <span>${escapeHtml(item.detail || "Today")}</span>
-              </div>
-              <div class="bar-chart-track">
-                <span class="bar-chart-fill bar-chart-fill--${(index % 4) + 1}" style="width:${width}%"></span>
-              </div>
-              <strong class="bar-chart-value">${escapeHtml(`${total}${valueSuffix}`)}</strong>
-            </div>
-          `;
-        })
-        .join("")}
-    </div>
-  `;
-}
-
-function studentTrendChartMarkup(weeklyTrend) {
-  const trend = weeklyTrend.length
-    ? weeklyTrend
-    : Array.from({ length: 7 }, (_, index) => ({
-        activityDate: `Day ${index + 1}`,
-        couponsIssued: 0,
-        studentsServed: 0,
-      }));
-  const maxValue = Math.max(
-    1,
-    ...trend.flatMap((item) => [Number(item.couponsIssued || 0), Number(item.studentsServed || 0)]),
-  );
-
-  return `
-    <div class="trend-chart-shell">
-      <div class="trend-chart-bars">
-        ${trend
-          .map((item) => {
-            const issuedHeight = Math.max(item.couponsIssued ? 14 : 8, (Number(item.couponsIssued || 0) / maxValue) * 100);
-            const studentsHeight = Math.max(item.studentsServed ? 14 : 8, (Number(item.studentsServed || 0) / maxValue) * 100);
-            return `
-              <div class="trend-bar-group">
-                <div class="trend-bar-stack">
-                  <span class="trend-bar trend-bar--issued" style="height:${issuedHeight}%"></span>
-                  <span class="trend-bar trend-bar--students" style="height:${studentsHeight}%"></span>
-                </div>
-                <strong>${escapeHtml(formatShortDay(item.activityDate))}</strong>
-              </div>
-            `;
-          })
-          .join("")}
-      </div>
-      <div class="trend-legend">
-        <span><i class="legend-swatch legend-swatch--issued"></i>Coupons issued</span>
-        <span><i class="legend-swatch legend-swatch--students"></i>Students served</span>
-      </div>
-    </div>
-  `;
-}
-
-function serviceSnapshotMarkup(activeMeal, serverStamp, stats, mealWindows) {
-  const nextWindow = !activeMeal.isActive
-    ? mealWindows.find((window) => window.mealCode === activeMeal.mealCode)
-    : null;
-
-  return `
-    <article class="glass-card cafeteria-snapshot-card">
-      <div class="section-row compact">
-        <div>
-          <p class="eyebrow">Service snapshot</p>
-          <h3>${escapeHtml(activeMeal.isActive ? `${activeMeal.mealName} is live` : "Cafeteria service closed")}</h3>
-        </div>
-        <span class="service-badge ${activeMeal.isActive ? "live" : "waiting"}">${escapeHtml(activeMeal.isActive ? "Open now" : "Waiting")}</span>
-      </div>
-      <p class="panel-copy">
-        ${escapeHtml(
-          activeMeal.isActive
-            ? `${activeMeal.timeLabel} is active, so students can generate and redeem valid coupons right now.`
-            : nextWindow
-              ? `Next window is ${nextWindow.mealName} (${nextWindow.timeLabel}). Staff can prepare the counter QR and menu before service starts.`
-              : "No cafeteria window is active yet. Keep meal hours and menu ready before the next session begins.",
-        )}
-      </p>
-      <div class="snapshot-grid">
-        ${snapshotItemMarkup("Server time", serverStamp || "Unavailable", "Live backend time")}
-        ${snapshotItemMarkup("Menus ready", String(stats.menusConfigured || 0), "Meals published today")}
-        ${snapshotItemMarkup("News live", String(stats.publishedNews || 0), "Visible in the app")}
-        ${snapshotItemMarkup("QR redeemed", String(stats.qrRedeemedToday || 0), "Successful scans today")}
-      </div>
-    </article>
-  `;
-}
-
-function redemptionMiniListMarkup(redemptions) {
-  if (!redemptions.length) {
-    return `<div class="empty-card">Student coupon records will appear here after the first issue or redemption today.</div>`;
+  .news-actions,
+  .actions-list,
+  .topbar-actions {
+    width: 100%;
   }
 
-  return `
-    <div class="activity-mini-list">
-      ${redemptions
-        .slice(0, 5)
-        .map(
-          (item) => `
-            <div class="activity-mini-item">
-              <div>
-                <strong>${escapeHtml(item.studentId)}</strong>
-                <span>${escapeHtml(`${item.couponType} Â· ${item.mealCode}`)}</span>
-              </div>
-              <small>${escapeHtml(item.redeemedAt ? formatRelativeTime(item.redeemedAt) : formatRelativeTime(item.issuedAt))}</small>
-            </div>
-          `,
-        )
-        .join("")}
-    </div>
-  `;
-}
-
-function workflowTimelineMarkup(activeMeal, stats) {
-  const activeIndex = activeMeal.isActive
-    ? 3
-    : (stats.menusConfigured || 0) > 0
-      ? 2
-      : 0;
-
-  const steps = [
-    "Hours Set",
-    "QR Generated",
-    "Menu Published",
-    "Window Open",
-    "Window Closed",
-  ];
-
-  return `
-    <section class="glass-card workflow-panel">
-      <div class="section-row compact workflow-header">
-        <div>
-          <p class="eyebrow">Service readiness</p>
-          <h3>Meal Window Workflow Timeline</h3>
-        </div>
-        <span class="workflow-chip">Current step</span>
-      </div>
-      <div class="workflow-line">
-        ${steps
-          .map((step, index) => `
-            <div class="workflow-step ${index <= activeIndex ? "is-complete" : ""} ${index === activeIndex ? "is-current" : ""}">
-              <span class="workflow-dot"></span>
-              <strong>${escapeHtml(step)}</strong>
-            </div>
-          `)
-          .join("")}
-      </div>
-    </section>
-  `;
-}
-
-function menuBarsMarkup(menus) {
-  const safeMenus = menus.map((menu) => ({
-    label: menu.mealName || "Meal",
-    value: (menu.items || []).length,
-  }));
-  const maxValue = Math.max(1, ...safeMenus.map((item) => item.value));
-
-  return `
-    <div class="mini-bars">
-      ${safeMenus
-        .map((item, index) => `
-          <div class="mini-bar-item">
-            <span
-              class="mini-bar-fill mini-bar-fill--${index + 1}"
-              style="height:${Math.max(18, (item.value / maxValue) * 86)}px"
-            ></span>
-            <strong>${escapeHtml(String(item.value))}</strong>
-            <small>${escapeHtml(item.label)}</small>
-          </div>
-        `)
-        .join("")}
-    </div>
-  `;
-}
-
-function activityFeedMarkup(news, redemptions) {
-  const operations = [
-    ...news.slice(0, 2).map((item) => ({
-      icon: "N",
-      tone: "news",
-      title: `${item.title || "Announcement"} published`,
-      meta: formatRelativeTime(item.publishAt),
-    })),
-    ...redemptions.slice(0, 3).map((item) => ({
-      icon: "Q",
-      tone: "qr",
-      title: `${item.studentId || "Student"} ${item.status || "updated"} ${item.couponType || "coupon"}`,
-      meta: formatRelativeTime(item.redeemedAt || item.issuedAt),
-    })),
-  ].slice(0, 5);
-
-  if (!operations.length) {
-    return `<div class="empty-card">Recent admin actions will appear here after menu, news, and QR activity starts.</div>`;
+  .topbar-actions {
+    flex-direction: column;
+    align-items: stretch;
   }
 
-  return `
-    <div class="activity-feed">
-      ${operations
-        .map((item) => `
-          <div class="activity-item">
-            <span class="activity-icon activity-icon--${escapeHtml(item.tone)}">${escapeHtml(item.icon)}</span>
-            <div class="activity-copy">
-              <strong>${escapeHtml(item.title)}</strong>
-              <span>${escapeHtml(item.meta)}</span>
-            </div>
-          </div>
-        `)
-        .join("")}
-    </div>
-  `;
-}
-
-function dashboardMarkup() {
-  if (state.loading && (!state.dashboard || !state.content)) {
-    return `
-      <section class="loading-shell glass-card">
-        <div class="loader-ring"></div>
-        <p>Loading control room...</p>
-      </section>
-    `;
+  .flash-stack {
+    left: 16px;
+    right: 16px;
+    top: auto;
+    bottom: 16px;
   }
 
-  const dashboard = state.dashboard || {};
-  const content = state.content || {};
-  const stats = dashboard.stats || {};
-  const activeMeal = dashboard.activeMeal || {};
-  const menus = content.menus || [];
-  const mealWindows = content.mealWindows || [];
-  const news = content.news || [];
-  const redemptions = dashboard.recentRedemptions || [];
-  const analytics = dashboard.analytics || {};
-  const serverStamp = `${content.serverDate || dashboard.serverDate || ""} ${content.serverTime || dashboard.serverTime || ""}`.trim();
-  const liveMealLabel = activeMeal.isActive ? activeMeal.mealName : "No active meal window";
-  const liveMealDetail = activeMeal.timeLabel || "Waiting for next service window";
-  const apiBaseLabel = state.apiBaseUrl || "Not configured";
-  const registeredStudents = Number(stats.registeredStudents || analytics.registeredStudents || 0);
-  const activeStudentsToday = Number(stats.activeStudentsToday || analytics.activeStudentsToday || 0);
-  const mealBreakdown = (analytics.mealBreakdown || mealWindows.map((window) => ({
-    mealName: window.mealName,
-    total: 0,
-  }))).map((item) => ({
-    label: item.mealName || item.label,
-    detail: "Coupons issued",
-    total: Number(item.total || 0),
-  }));
-  const couponBreakdown = (analytics.couponBreakdown || [
-    { couponType: "Economy", total: 0 },
-    { couponType: "Coupon", total: 0 },
-  ]).map((item) => ({
-    label: item.couponType === "Coupon" ? "Food stall coupon" : item.couponType,
-    detail: "Today's requests",
-    total: Number(item.total || 0),
-  }));
-  const weeklyTrend = analytics.weeklyTrend || [];
-  state.currentPage = getCurrentPageKey();
-  const currentSection = WORKSPACE_SECTIONS.find((section) => section.key === state.currentPage) || WORKSPACE_SECTIONS[0];
-  const dashboardPage = `
-    <section class="control-room-overview cafeteria-overview">
-      <section class="overview-intro-card glass-card">
-        <div>
-          <p class="eyebrow">Dashboard</p>
-          <h2>DCMS cafeteria management</h2>
-          <p class="panel-copy">Track student demand, meal readiness, and coupon activity in one place without extra dashboard clutter.</p>
-        </div>
-        <div class="overview-intro-meta">
-          <span class="overview-meta-pill">${escapeHtml(content.serverDate || dashboard.serverDate || "Today")}</span>
-          <span class="overview-meta-pill">${escapeHtml(activeMeal.isActive ? `${activeMeal.mealName} live` : "No live meal")}</span>
-        </div>
-      </section>
-
-      <section class="overview-kpi-grid">
-        ${summaryKpiMarkup("Registered students", formatCompactNumber(registeredStudents), "Users linked to the DCMS app", "summary-kpi-card--students")}
-        ${summaryKpiMarkup("Students served today", formatCompactNumber(activeStudentsToday), "Distinct students with coupons today", "summary-kpi-card--served")}
-        ${summaryKpiMarkup("Coupons issued today", formatCompactNumber(stats.qrIssuedToday || 0), "Generated from the student app", "summary-kpi-card--issued")}
-        ${summaryKpiMarkup("Coupons redeemed today", formatCompactNumber(stats.qrRedeemedToday || 0), "Successfully scanned at the counter", "summary-kpi-card--redeemed")}
-      </section>
-
-      <section class="dashboard-chart-grid">
-        ${serviceSnapshotMarkup(activeMeal, serverStamp, stats, mealWindows)}
-
-        <article class="glass-card chart-card">
-          <div class="section-row compact">
-            <div>
-              <p class="eyebrow">Meal demand</p>
-              <h3>Today by meal window</h3>
-            </div>
-          </div>
-          <p class="panel-copy">See which cafeteria session is attracting the most coupon requests today.</p>
-          ${barChartRowsMarkup(mealBreakdown, "Meal demand will appear after students begin generating coupons.")}
-        </article>
-      </section>
-
-      <section class="dashboard-chart-grid dashboard-chart-grid--wide">
-        <article class="glass-card chart-card chart-card--wide">
-          <div class="section-row compact">
-            <div>
-              <p class="eyebrow">Student traffic</p>
-              <h3>Seven-day app activity</h3>
-            </div>
-          </div>
-          <p class="panel-copy">Compare total coupons issued versus distinct students served across the last seven days.</p>
-          ${studentTrendChartMarkup(weeklyTrend)}
-        </article>
-
-        <article class="glass-card chart-card">
-          <div class="section-row compact">
-            <div>
-              <p class="eyebrow">Coupon mix</p>
-              <h3>Economy vs food stall</h3>
-            </div>
-          </div>
-          <p class="panel-copy">Monitor which coupon type students prefer today so service can prepare correctly.</p>
-          ${barChartRowsMarkup(couponBreakdown, "Coupon type demand will appear after the first student request.")}
-        </article>
-      </section>
-
-      ${workflowTimelineMarkup(activeMeal, stats)}
-
-      <section class="dashboard-chart-grid">
-        <article class="glass-card chart-card">
-          <div class="section-row compact">
-            <div>
-              <p class="eyebrow">Recent student records</p>
-              <h3>Latest coupon activity</h3>
-            </div>
-          </div>
-          <p class="panel-copy">Quick view of the most recent student coupon actions without leaving the dashboard.</p>
-          ${redemptionMiniListMarkup(redemptions)}
-        </article>
-
-        <section class="glass-card operations-panel">
-          <div class="section-row compact">
-            <div>
-              <p class="eyebrow">Admin activity</p>
-              <h3>Operations feed</h3>
-            </div>
-          </div>
-          ${activityFeedMarkup(news, redemptions)}
-        </section>
-      </section>
-    </section>
-  `;
-  const servicePage = `
-    ${pageHeaderMarkup(
-      "Service operations",
-      "Meal Hours",
-      "This page focuses only on cafeteria operating hours and the counter QR so staff can prepare service without extra distractions.",
-      `<button type="button" class="secondary-button" id="saveScheduleButton">Save Hours</button>
-       <button type="button" class="secondary-button" id="generateSessionQrButton">Generate QR</button>`,
-      `Server time: ${escapeHtml(serverStamp || "Unavailable")}`,
-    )}
-    <section class="module-section">
-      <div class="content-grid">
-        ${appImpactCardMarkup(
-          "Meal windows and QR flow",
-          "These settings affect the student app coupon timing and cafeteria QR operations.",
-          "Students can only generate meal coupons inside active meal windows, and staff validate those QR tokens against the same live backend.",
-          [
-            { label: "Active meal", value: liveMealLabel },
-            { label: "Meal window", value: liveMealDetail },
-            { label: "App surface", value: "Home tab + QR generation" },
-          ],
-        )}
-      </div>
-      <div class="content-grid">
-        <article class="glass-card panel-card">
-          <div class="section-row">
-            <div>
-              <p class="eyebrow">Schedule</p>
-              <h3>Meal windows</h3>
-            </div>
-          </div>
-          <p class="panel-copy">Update these hours carefully because they affect live student coupon generation and validation.</p>
-          <form id="scheduleForm" class="stacked-form">
-            ${mealWindowRows(mealWindows)}
-          </form>
-        </article>
-        <article class="glass-card panel-card">
-          <div class="section-row">
-            <div>
-              <p class="eyebrow">Counter</p>
-              <h3>Session display QR</h3>
-            </div>
-          </div>
-          <p class="panel-copy">Display this at the counter so operators know which meal service is active or prepared next.</p>
-          <div class="session-qr-controls">
-            <label>
-              <span>Select meal</span>
-              <select id="sessionMealCode">
-                ${mealWindows
-                  .map(
-                    (window) => `
-                      <option value="${escapeHtml(window.mealCode)}" ${activeMeal.mealCode === window.mealCode ? "selected" : ""}>
-                        ${escapeHtml(window.mealName)}
-                      </option>
-                    `,
-                  )
-                  .join("")}
-              </select>
-            </label>
-          </div>
-          <div class="qr-shell">
-            <canvas id="sessionQrCanvas" width="220" height="220"></canvas>
-            <div class="qr-caption">
-              <strong>${state.sessionQr ? escapeHtml(state.sessionQr.meal.mealName) : "Generate a live counter QR"}</strong>
-              <p>${state.sessionQr ? escapeHtml(state.sessionQr.meal.timeLabel) : "Use this during breakfast, lunch, or dinner service."}</p>
-            </div>
-          </div>
-        </article>
-      </div>
-    </section>
-  `;
-  const menuPage = `
-    ${pageHeaderMarkup(
-      "Student content",
-      "Daily Menu",
-      "This page is only for today's menu. Publish clean meal items here without mixing them with news or QR validation tasks.",
-      `<button type="button" class="secondary-button" id="saveMenusButton">Publish Menu</button>`,
-      `Student app reads these items from the shared backend after refresh.`,
-    )}
-    <section class="module-section">
-      <div class="content-grid content-grid--sidebar">
-        <article class="glass-card panel-card">
-          <div class="section-row">
-            <div>
-              <p class="eyebrow">Menu board</p>
-              <h3>Today's menu</h3>
-            </div>
-          </div>
-          <form id="menuForm" class="stacked-form">
-            ${menuEditors(menus)}
-          </form>
-        </article>
-        <div class="page-aside">
-          ${appImpactCardMarkup(
-            "Menu tab sync",
-            "Everything saved here appears in the student app menu tab for today's date.",
-            "Students see breakfast, lunch, and dinner items directly from this backend payload after their app refreshes or reopens.",
-            [
-              { label: "Date", value: content.serverDate || "Today" },
-              { label: "Menus ready", value: String(stats.menusConfigured || 0) },
-              { label: "App tab", value: "Menu" },
-            ],
-          )}
-          ${menuPreviewMarkup(menus)}
-        </div>
-      </div>
-    </section>
-  `;
-  const newsPage = `
-    ${pageHeaderMarkup(
-      "Broadcast centre",
-      "Notices",
-      "Use this page to write, schedule, edit, and review student-facing announcements in one place.",
-      `<button type="button" class="secondary-button" id="resetNewsFormButton">Clear Form</button>`,
-      `Published news will appear in the app when its publish time is reached.`,
-    )}
-    <section class="module-section">
-      <section class="news-layout">
-        <article class="glass-card panel-card">
-          <div class="section-row">
-            <div>
-              <p class="eyebrow">Composer</p>
-              <h3>Announcement editor</h3>
-            </div>
-          </div>
-          <form id="newsForm" class="stacked-form">
-            <input type="hidden" name="newsId" value="" />
-            <div class="dual-field-grid">
-              <label>
-                <span>Title</span>
-                <input type="text" name="title" placeholder="Announcement title" required />
-              </label>
-              <label>
-                <span>Category</span>
-                <select name="category">
-                  <option value="General">General</option>
-                  <option value="Operations">Operations</option>
-                  <option value="System">System</option>
-                  <option value="Promotion">Promotion</option>
-                </select>
-              </label>
-            </div>
-            <div class="dual-field-grid">
-              <label>
-                <span>Status</span>
-                <select name="status">
-                  <option value="published">Published</option>
-                  <option value="draft">Draft</option>
-                </select>
-              </label>
-              <label>
-                <span>Priority</span>
-                <input type="number" name="priority" min="0" max="10" value="0" />
-              </label>
-            </div>
-            <div class="dual-field-grid">
-              <label>
-                <span>Publish time</span>
-                <input type="datetime-local" name="publishAt" />
-              </label>
-              <label>
-                <span>Expire time</span>
-                <input type="datetime-local" name="expiresAt" />
-              </label>
-            </div>
-            <label>
-              <span>Message</span>
-              <textarea name="body" rows="6" placeholder="Write the cafeteria announcement here" required></textarea>
-            </label>
-            <button type="submit" class="primary-button">Save News</button>
-          </form>
-        </article>
-        <article class="news-column">
-          ${appImpactCardMarkup(
-            "News feed sync",
-            "This page controls what students read in the app news feed.",
-            "Only published items whose publish time has started are visible to students. Draft items stay hidden until you publish them.",
-            [
-              { label: "Published", value: String(stats.publishedNews || 0) },
-              { label: "App tab", value: "News" },
-              { label: "Visibility", value: "Published + time reached" },
-            ],
-          )}
-          ${newsPreviewMarkup(news)}
-          ${newsCards(news)}
-        </article>
-      </section>
-    </section>
-  `;
-  const validationPage = `
-    ${pageHeaderMarkup(
-      "Counter validation",
-      "Scan QR",
-      "This page is dedicated to validating and redeeming student QR tokens against the live backend.",
-      "",
-      `Use operator name plus the student token for a proper redemption record.`,
-    )}
-    <section class="module-section">
-      <div class="content-grid content-grid--sidebar">
-        <article class="glass-card panel-card">
-          <form id="validatorForm" class="stacked-form">
-            <label>
-              <span>Operator name</span>
-              <input type="text" name="operatorName" placeholder="Cafeteria staff name" />
-            </label>
-            <label>
-              <span>Student QR token</span>
-              <textarea name="token" rows="6" placeholder="Paste or scan the full QR token here"></textarea>
-            </label>
-            <button type="submit" class="primary-button">Validate And Redeem</button>
-          </form>
-          ${validatorResultMarkup()}
-        </article>
-        <div class="page-aside">
-          ${appImpactCardMarkup(
-            "Student QR sync",
-            "The token validated here comes directly from the student app QR generation flow.",
-            "If the student app generated the QR during an active meal window, this page can verify and redeem it against the shared backend immediately.",
-            [
-              { label: "QR issued today", value: String(stats.qrIssuedToday || 0) },
-              { label: "Redeemed today", value: String(stats.qrRedeemedToday || 0) },
-              { label: "App flow", value: "Home tab coupon QR" },
-            ],
-          )}
-        </div>
-      </div>
-    </section>
-  `;
-  const activityPage = `
-    ${pageHeaderMarkup(
-      "Audit trail",
-      "Student Records",
-      "This page focuses on recent coupon history so staff can review what was issued or redeemed today.",
-      "",
-      `Table updates after live admin actions and dashboard refresh.`,
-    )}
-    <section class="module-section">
-      <div class="content-grid content-grid--sidebar">
-        <article class="glass-card panel-card">
-          ${redemptionsMarkup(redemptions)}
-        </article>
-        <div class="page-aside">
-          ${appImpactCardMarkup(
-            "App coupon activity",
-            "This log reflects coupon activity generated from the student app and redeemed by admin-side validation.",
-            "Use this page to confirm whether the student app flow is working end to end for issuance and redemption.",
-            [
-              { label: "Issued", value: String(stats.qrIssuedToday || 0) },
-              { label: "Redeemed", value: String(stats.qrRedeemedToday || 0) },
-              { label: "Linked flow", value: "App QR + admin validation" },
-            ],
-          )}
-        </div>
-      </div>
-    </section>
-  `;
-  const pageMarkupBySection = {
-    overview: dashboardPage,
-    service: servicePage,
-    menu: menuPage,
-    news: newsPage,
-    validation: validationPage,
-    activity: activityPage,
-  };
-  return `
-    <div class="dashboard-shell">
-      <button class="sidebar-overlay ${state.sidebarOpen ? "is-open" : ""}" id="sidebarOverlay" type="button" aria-label="Close navigation"></button>
-      <aside class="dashboard-sidebar ${state.sidebarOpen ? "is-open" : ""}">
-        <div class="dashboard-brand glass-card">
-          <div class="brand-mark">DC</div>
-          <div>
-            <strong>${escapeHtml(config.portalName || "AIMST DCMS Control Room")}</strong>
-            <span>Digital cafeteria admin</span>
-          </div>
-        </div>
-
-        <div class="dashboard-sidebar-panel glass-card">
-          <div class="dashboard-nav-group">
-            <span class="dashboard-nav-label">Core</span>
-            ${navLinkMarkup(WORKSPACE_SECTIONS[0])}
-            ${navLinkMarkup(WORKSPACE_SECTIONS[1])}
-            ${navLinkMarkup(WORKSPACE_SECTIONS[2])}
-          </div>
-
-          <div class="dashboard-nav-group">
-            <span class="dashboard-nav-label">Operations</span>
-            ${navLinkMarkup(WORKSPACE_SECTIONS[3])}
-            ${navLinkMarkup(WORKSPACE_SECTIONS[4])}
-            ${navLinkMarkup(WORKSPACE_SECTIONS[5])}
-          </div>
-        </div>
-
-        <div class="dashboard-sidebar-panel glass-card dashboard-status-card">
-          ${detailItemMarkup("API base", apiBaseLabel)}
-          ${detailItemMarkup("Server time", serverStamp)}
-          ${detailItemMarkup("Current meal", liveMealLabel)}
-          ${detailItemMarkup("Meal window", liveMealDetail)}
-        </div>
-      </aside>
-
-      <div class="dashboard-stage">
-        <header class="dashboard-toolbar glass-card">
-          <div class="toolbar-leading">
-            <button class="toolbar-icon-button" id="toggleSidebarButton" type="button" aria-label="Open navigation menu">
-              <span class="hamburger-icon" aria-hidden="true">
-                <span></span>
-                <span></span>
-                <span></span>
-              </span>
-            </button>
-            <div class="toolbar-context">
-              <span class="toolbar-context-label">Cafeteria management</span>
-              <strong>${escapeHtml(currentSection.label)}</strong>
-              <small>${escapeHtml(currentSection.detail)}</small>
-            </div>
-          </div>
-          <div class="toolbar-actions">
-            <button class="secondary-button toolbar-button" id="refreshDashboardButton" type="button">Refresh</button>
-            <div class="profile-menu">
-              <button class="profile-chip profile-chip-button" id="profileMenuButton" type="button" aria-haspopup="menu" aria-expanded="${state.profileMenuOpen ? "true" : "false"}">
-                <div class="profile-avatar">A</div>
-                <div class="profile-info">
-                  <strong>Admin</strong>
-                  <span>Cafeteria session</span>
-                </div>
-                <span class="profile-caret">Ë…</span>
-              </button>
-              <div class="profile-dropdown" role="menu" aria-label="Admin menu">
-                <div class="profile-dropdown-header">
-                  <strong>Administrator</strong>
-                  <span>${escapeHtml(config.portalName || "AIMST DCMS Control Room")}</span>
-                </div>
-                <button class="profile-dropdown-item danger" id="dashboardLogoutButton" type="button" role="menuitem">Log Out</button>
-              </div>
-            </div>
-          </div>
-        </header>
-
-        <main class="dashboard-content">
-          ${pageMarkupBySection[state.currentPage] || dashboardPage}
-        </main>
-      </div>
-    </div>
-  `;
-}
-
-function render() {
-  if (logoutButton) {
-    logoutButton.classList.add("hidden");
-  }
-
-  if (shellTopbar) {
-    shellTopbar.classList.toggle("hidden", Boolean(state.token));
-  }
-  if (pageShell) {
-    pageShell.classList.toggle("dashboard-mode", Boolean(state.token));
-  }
-  appRoot.innerHTML = state.token ? dashboardMarkup() : loginMarkup();
-  bindEvents();
-  syncProfileMenu();
-  renderSessionQr();
-}
-
-function bindEvents() {
-  const loginForm = document.getElementById("loginForm");
-  if (loginForm) {
-    loginForm.addEventListener("submit", (event) => {
-      event.preventDefault();
-      const formData = new FormData(loginForm);
-      setApiBaseUrl(formData.get("apiBaseUrl"));
-      login(formData.get("username"), formData.get("password"));
-    });
-  }
-
-  logoutButton.onclick = logout;
-  const profileMenuButton = document.getElementById("profileMenuButton");
-  if (profileMenuButton) {
-    profileMenuButton.addEventListener("click", (event) => {
-      event.stopPropagation();
-      setProfileMenuOpen(!state.profileMenuOpen);
-    });
-  }
-
-  const dashboardLogoutButton = document.getElementById("dashboardLogoutButton");
-  if (dashboardLogoutButton) {
-    dashboardLogoutButton.addEventListener("click", (event) => {
-      event.stopPropagation();
-      logout();
-    });
-  }
-
-  document.removeEventListener("click", handleDocumentClick);
-  document.addEventListener("click", handleDocumentClick);
-
-  const toggleSidebarButton = document.getElementById("toggleSidebarButton");
-  if (toggleSidebarButton) {
-    toggleSidebarButton.addEventListener("click", () => {
-      setProfileMenuOpen(false);
-      state.sidebarOpen = !state.sidebarOpen;
-      render();
-    });
-  }
-
-  const sidebarOverlay = document.getElementById("sidebarOverlay");
-  if (sidebarOverlay) {
-    sidebarOverlay.addEventListener("click", () => {
-      state.sidebarOpen = false;
-      render();
-    });
-  }
-
-  const refreshButton = document.getElementById("refreshDashboardButton");
-  if (refreshButton) {
-    refreshButton.addEventListener("click", () => {
-      setProfileMenuOpen(false);
-      loadDashboard();
-    });
-  }
-
-  const saveScheduleButton = document.getElementById("saveScheduleButton");
-  if (saveScheduleButton) {
-    saveScheduleButton.addEventListener("click", saveSchedule);
-  }
-
-  const saveMenusButton = document.getElementById("saveMenusButton");
-  if (saveMenusButton) {
-    saveMenusButton.addEventListener("click", saveMenus);
-  }
-
-  const generateSessionQrButton = document.getElementById("generateSessionQrButton");
-  if (generateSessionQrButton) {
-    generateSessionQrButton.addEventListener("click", generateSessionQr);
-  }
-
-  const validatorForm = document.getElementById("validatorForm");
-  if (validatorForm) {
-    validatorForm.addEventListener("submit", validateCouponQr);
-  }
-
-  const newsForm = document.getElementById("newsForm");
-  if (newsForm) {
-    newsForm.addEventListener("submit", saveNews);
-  }
-
-  const resetNewsFormButton = document.getElementById("resetNewsFormButton");
-  if (resetNewsFormButton) {
-    resetNewsFormButton.addEventListener("click", resetNewsForm);
-  }
-
-  document.querySelectorAll("[data-edit-news]").forEach((button) => {
-    button.addEventListener("click", () => editNews(button.dataset.editNews));
-  });
-
-  document.querySelectorAll("[data-delete-news]").forEach((button) => {
-    button.addEventListener("click", () => deleteNews(button.dataset.deleteNews));
-  });
-}
-
-async function saveSchedule() {
-  const mealWindows = state.content?.mealWindows || [];
-  const form = document.getElementById("scheduleForm");
-  if (!form) return;
-
-  const payload = mealWindows.map((window, index) => ({
-    mealCode: window.mealCode,
-    mealName: window.mealName,
-    startTime: `${form.elements[`${window.mealCode}_start`].value}:00`,
-    endTime: `${form.elements[`${window.mealCode}_end`].value}:00`,
-    sortOrder: index + 1,
-  }));
-
-  try {
-    await api("/admin/meal-windows", {
-      method: "PUT",
-      body: { mealWindows: payload },
-    });
-    showFlash("Meal windows updated", "success");
-    await loadDashboard();
-  } catch (error) {
-    showFlash(error.message || "Unable to save schedule", "danger");
+  .flash-card {
+    min-width: 0;
+    max-width: none;
   }
 }
-
-async function saveMenus() {
-  const menus = state.content?.menus || [];
-  const form = document.getElementById("menuForm");
-  if (!form) return;
-
-  const payload = menus.map((menu) => ({
-    mealCode: menu.mealCode,
-    items: form.elements[`${menu.mealCode}_items`].value
-      .split("\n")
-      .map((item) => item.trim())
-      .filter(Boolean),
-  }));
-
-  try {
-    await api("/admin/menus/today", {
-      method: "PUT",
-      body: { menus: payload },
-    });
-    showFlash("Today's menu published to the app", "success");
-    await loadDashboard();
-  } catch (error) {
-    showFlash(error.message || "Unable to save menu", "danger");
-  }
-}
-
-async function generateSessionQr() {
-  const selector = document.getElementById("sessionMealCode");
-  const mealCode = selector ? selector.value : "";
-
-  try {
-    state.sessionQr = await api("/admin/qr/session", {
-      method: "POST",
-      body: { mealCode },
-    });
-    renderSessionQr();
-    showFlash("Session QR generated", "success");
-  } catch (error) {
-    showFlash(error.message || "Unable to generate session QR", "danger");
-  }
-}
-
-function renderSessionQr() {
-  const canvas = document.getElementById("sessionQrCanvas");
-  if (!canvas) return;
-
-  const context = canvas.getContext("2d");
-  context.clearRect(0, 0, canvas.width, canvas.height);
-  context.fillStyle = "#f7f7f7";
-  context.fillRect(0, 0, canvas.width, canvas.height);
-
-  if (!state.sessionQr || !state.sessionQr.qrValue) {
-    context.fillStyle = "#99a3c2";
-    context.font = "15px Segoe UI";
-    context.textAlign = "center";
-    context.fillText("QR preview", canvas.width / 2, canvas.height / 2 - 10);
-    context.fillText("will appear here", canvas.width / 2, canvas.height / 2 + 18);
-    return;
-  }
-
-  if (!window.QRCode) {
-    showFlash("QR library failed to load from CDN", "danger");
-    return;
-  }
-
-  window.QRCode.toCanvas(
-    canvas,
-    state.sessionQr.qrValue,
-    {
-      width: 220,
-      margin: 1,
-      color: {
-        dark: "#132042",
-        light: "#f7f7f7",
-      },
-    },
-    (error) => {
-      if (error) {
-        showFlash("Unable to render QR canvas", "danger");
-      }
-    },
-  );
-}
-
-async function validateCouponQr(event) {
-  event.preventDefault();
-  const formData = new FormData(event.currentTarget);
-
-  try {
-    state.validationResult = await api("/admin/qr/validate", {
-      method: "POST",
-      body: {
-        operatorName: formData.get("operatorName"),
-        token: formData.get("token"),
-      },
-    });
-    showFlash("Student QR redeemed successfully", "success");
-    await loadDashboard();
-  } catch (error) {
-    showFlash(error.message || "Unable to validate QR", "danger");
-  }
-}
-
-function resetNewsForm() {
-  const form = document.getElementById("newsForm");
-  if (!form) return;
-  form.reset();
-  form.elements.newsId.value = "";
-}
-
-function editNews(newsId) {
-  const item = (state.content?.news || []).find((news) => String(news.id) === String(newsId));
-  const form = document.getElementById("newsForm");
-  if (!item || !form) return;
-
-  form.elements.newsId.value = item.id;
-  form.elements.title.value = item.title || "";
-  form.elements.category.value = item.category || "General";
-  form.elements.status.value = item.status || "published";
-  form.elements.priority.value = item.priority || 0;
-  form.elements.publishAt.value = toDateTimeLocal(item.publishAt);
-  form.elements.expiresAt.value = toDateTimeLocal(item.expiresAt);
-  form.elements.body.value = item.body || "";
-  showFlash("Editing news post", "info");
-  form.scrollIntoView({ behavior: "smooth", block: "center" });
-}
-
-async function saveNews(event) {
-  event.preventDefault();
-  const formData = new FormData(event.currentTarget);
-  const newsId = formData.get("newsId");
-  const payload = {
-    title: formData.get("title"),
-    body: formData.get("body"),
-    category: formData.get("category"),
-    status: formData.get("status"),
-    priority: Number(formData.get("priority") || 0),
-    publishAt: formData.get("publishAt") ? String(formData.get("publishAt")).replace("T", " ") + ":00" : null,
-    expiresAt: formData.get("expiresAt") ? String(formData.get("expiresAt")).replace("T", " ") + ":00" : null,
-  };
-
-  try {
-    await api(newsId ? `/admin/news/${newsId}` : "/admin/news", {
-      method: newsId ? "PUT" : "POST",
-      body: payload,
-    });
-    showFlash(newsId ? "News updated" : "News published", "success");
-    resetNewsForm();
-    await loadDashboard();
-  } catch (error) {
-    showFlash(error.message || "Unable to save news", "danger");
-  }
-}
-
-async function deleteNews(newsId) {
-  const confirmed = window.confirm("Delete this news item?");
-  if (!confirmed) return;
-
-  try {
-    await api(`/admin/news/${newsId}`, {
-      method: "DELETE",
-    });
-    showFlash("News deleted", "success");
-    await loadDashboard();
-  } catch (error) {
-    showFlash(error.message || "Unable to delete news", "danger");
-  }
-}
-
-async function initialise() {
-  render();
-  await checkHealth();
-  if (state.token) {
-    await loadDashboard();
-  }
-}
-
-initialise();
