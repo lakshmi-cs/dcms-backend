@@ -365,22 +365,43 @@ textarea {
 
 .dashboard-shell {
   display: grid;
-  grid-template-columns: 252px minmax(0, 1fr);
+  grid-template-columns: 1fr;
   gap: 18px;
   min-height: calc(100vh - 56px);
 }
 
 .dashboard-sidebar {
-  position: sticky;
-  top: 16px;
-  align-self: start;
+  position: fixed;
+  top: 18px;
+  left: 18px;
+  bottom: 18px;
+  width: 252px;
   display: grid;
   gap: 14px;
-  z-index: 3;
+  z-index: 30;
+  transform: translateX(-112%);
+  transition: transform 180ms ease;
+}
+
+.dashboard-sidebar.is-open {
+  transform: translateX(0);
 }
 
 .sidebar-overlay {
-  display: none;
+  position: fixed;
+  inset: 0;
+  z-index: 20;
+  display: block;
+  border: 0;
+  background: rgba(5, 8, 25, 0.48);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 180ms ease;
+}
+
+.sidebar-overlay.is-open {
+  opacity: 1;
+  pointer-events: auto;
 }
 
 .dashboard-brand,
