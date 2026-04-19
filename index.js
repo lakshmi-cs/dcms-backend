@@ -21,45 +21,17 @@ app.use(cors());
 app.use(bodyParser.json());
 app.use(express.static('dcms_admin_portal')); 
 
-// Replace your existing db connection block with this:
-const dbConfig = {
+const db = mysql.createPool({
   host: process.env.TIDB_HOST,
   port: process.env.TIDB_PORT,
   user: process.env.TIDB_USER,
   password: process.env.TIDB_PASSWORD,
   database: process.env.TIDB_DATABASE,
-  connectionLimit: Number(process.env.DB_CONNECTION_LIMIT || 10),
-  waitForConnections: true,
-  queueLimit: 0,
+  connectionLimit: 10, // Use a number here
   ssl: {
     rejectUnauthorized: false,
   },
-};
-
-// Only create the pool if the host is defined to prevent startup crashes
-let db;
-if (dbConfig.host) {
-  db = mysql.createPool(dbConfig);
-} else {
-  console.error("CRITICAL: TIDB_HOST is not defined in environment variables!");
-}
-
-// Update your dbQuery function to handle a missing 'db' object
-function dbQuery(query, params = []) {
-  return new Promise((resolve, reject) => {
-    if (!db) {
-      return reject(new Error("Database connection is not configured. Check environment variables."));
-    }
-    db.query(query, params, (err, results) => {
-      if (err) {
-        reject(err);
-        return;
-      }
-      resolve(results);
-    });
-  });
-}
-
+});
 function dbQuery(query, params = []) {
   return new Promise((resolve, reject) => {
     db.query(query, params, (err, results) => {
