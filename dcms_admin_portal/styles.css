@@ -708,6 +708,7 @@ textarea {
 
 .profile-menu {
   position: relative;
+  z-index: 40;
 }
 
 .profile-chip {
@@ -770,6 +771,7 @@ textarea {
 }
 
 .profile-dropdown {
+  display: none;
   position: absolute;
   top: calc(100% + 10px);
   right: 0;
@@ -785,10 +787,11 @@ textarea {
   pointer-events: none;
   transform: translateY(-6px);
   transition: opacity 160ms ease, transform 160ms ease;
-  z-index: 12;
+  z-index: 41;
 }
 
 .profile-dropdown.is-open {
+  display: block;
   opacity: 1;
   pointer-events: auto;
   transform: translateY(0);
