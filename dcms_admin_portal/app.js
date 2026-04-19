@@ -131,8 +131,8 @@ function showFlash(message, tone = "info") {
 function syncProfileMenu() {
   const profileMenu = document.querySelector(".profile-menu");
   const profileMenuButton = document.getElementById("profileMenuButton");
-  const profileInfo = document.querySelector(".profile-info");
   const profileCaret = document.querySelector(".profile-caret");
+  const profileDropdown = document.querySelector(".profile-dropdown");
   const dashboardLogoutButton = document.getElementById("dashboardLogoutButton");
 
   if (profileMenu) {
@@ -143,12 +143,12 @@ function syncProfileMenu() {
     profileMenuButton.setAttribute("aria-expanded", state.profileMenuOpen ? "true" : "false");
   }
 
-  if (profileInfo) {
-    profileInfo.classList.toggle("hidden", state.profileMenuOpen);
+  if (profileCaret) {
+    profileCaret.textContent = state.profileMenuOpen ? "Ë„" : "Ë…";
   }
 
-  if (profileCaret) {
-    profileCaret.classList.toggle("hidden", state.profileMenuOpen);
+  if (profileDropdown) {
+    profileDropdown.classList.toggle("is-open", state.profileMenuOpen);
   }
 
   if (dashboardLogoutButton) {
@@ -962,6 +962,7 @@ function dashboardMarkup() {
   }));
   const weeklyTrend = analytics.weeklyTrend || [];
   state.currentPage = getCurrentPageKey();
+  const currentSection = WORKSPACE_SECTIONS.find((section) => section.key === state.currentPage) || WORKSPACE_SECTIONS[0];
   const dashboardPage = `
     <section class="control-room-overview cafeteria-overview">
       <section class="overview-intro-card glass-card">
@@ -1349,25 +1350,38 @@ function dashboardMarkup() {
 
       <div class="dashboard-stage">
         <header class="dashboard-toolbar glass-card">
-          <button class="toolbar-icon-button" id="toggleSidebarButton" type="button" aria-label="Open navigation menu">
-            <span class="hamburger-icon" aria-hidden="true">
-              <span></span>
-              <span></span>
-              <span></span>
-            </span>
-          </button>
+          <div class="toolbar-leading">
+            <button class="toolbar-icon-button" id="toggleSidebarButton" type="button" aria-label="Open navigation menu">
+              <span class="hamburger-icon" aria-hidden="true">
+                <span></span>
+                <span></span>
+                <span></span>
+              </span>
+            </button>
+            <div class="toolbar-context">
+              <span class="toolbar-context-label">Cafeteria management</span>
+              <strong>${escapeHtml(currentSection.label)}</strong>
+              <small>${escapeHtml(currentSection.detail)}</small>
+            </div>
+          </div>
           <div class="toolbar-actions">
             <button class="secondary-button toolbar-button" id="refreshDashboardButton" type="button">Refresh</button>
             <div class="profile-menu">
               <button class="profile-chip profile-chip-button" id="profileMenuButton" type="button" aria-haspopup="menu" aria-expanded="${state.profileMenuOpen ? "true" : "false"}">
                 <div class="profile-avatar">A</div>
-                <div class="profile-info ${state.profileMenuOpen ? "hidden" : ""}">
+                <div class="profile-info">
                   <strong>Admin</strong>
                   <span>Cafeteria session</span>
                 </div>
-                <span class="profile-caret ${state.profileMenuOpen ? "hidden" : ""}">Ë…</span>
+                <span class="profile-caret">Ë…</span>
               </button>
-              <button class="profile-dropdown-item danger logout-chip ${state.profileMenuOpen ? "" : "hidden"}" id="dashboardLogoutButton" type="button">Log Out</button>
+              <div class="profile-dropdown" role="menu" aria-label="Admin menu">
+                <div class="profile-dropdown-header">
+                  <strong>Administrator</strong>
+                  <span>${escapeHtml(config.portalName || "AIMST DCMS Control Room")}</span>
+                </div>
+                <button class="profile-dropdown-item danger ${state.profileMenuOpen ? "" : "hidden"}" id="dashboardLogoutButton" type="button" role="menuitem">Log Out</button>
+              </div>
             </div>
           </div>
         </header>
@@ -1413,16 +1427,12 @@ function bindEvents() {
 
   logoutButton.onclick = logout;
 
-  if (adminIconTrigger) {
-    adminIconTrigger.onclick = (event) => {
-      event.stopPropagation();
-      logoutButton.classList.toggle("hidden");
-    };
-  }
-
   const dashboardLogoutButton = document.getElementById("dashboardLogoutButton");
   if (dashboardLogoutButton) {
-    dashboardLogoutButton.addEventListener("click", logout);
+    dashboardLogoutButton.addEventListener("click", (event) => {
+      event.stopPropagation();
+      logout();
+    });
   }
 
   const profileMenuButton = document.getElementById("profileMenuButton");
@@ -1439,6 +1449,7 @@ function bindEvents() {
   const toggleSidebarButton = document.getElementById("toggleSidebarButton");
   if (toggleSidebarButton) {
     toggleSidebarButton.addEventListener("click", () => {
+      setProfileMenuOpen(false);
       state.sidebarOpen = !state.sidebarOpen;
       render();
     });
@@ -1454,7 +1465,10 @@ function bindEvents() {
 
   const refreshButton = document.getElementById("refreshDashboardButton");
   if (refreshButton) {
-    refreshButton.addEventListener("click", loadDashboard);
+    refreshButton.addEventListener("click", () => {
+      setProfileMenuOpen(false);
+      loadDashboard();
+    });
   }
 
   const saveScheduleButton = document.getElementById("saveScheduleButton");
