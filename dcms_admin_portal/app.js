@@ -51,6 +51,7 @@ const state = {
 
 const appRoot = document.getElementById("appRoot");
 const serverStatus = document.getElementById("serverStatus");
+const adminIconTrigger = document.getElementById("adminIconTrigger");
 const logoutButton = document.getElementById("logoutButton");
 const shellTopbar = document.querySelector(".topbar");
 const pageShell = document.querySelector(".page-shell");
@@ -130,7 +131,9 @@ function showFlash(message, tone = "info") {
 function syncProfileMenu() {
   const profileMenu = document.querySelector(".profile-menu");
   const profileMenuButton = document.getElementById("profileMenuButton");
-  const profileDropdown = document.querySelector(".profile-dropdown");
+  const profileInfo = document.querySelector(".profile-info");
+  const profileCaret = document.querySelector(".profile-caret");
+  const dashboardLogoutButton = document.getElementById("dashboardLogoutButton");
 
   if (profileMenu) {
     profileMenu.classList.toggle("is-open", state.profileMenuOpen);
@@ -140,8 +143,16 @@ function syncProfileMenu() {
     profileMenuButton.setAttribute("aria-expanded", state.profileMenuOpen ? "true" : "false");
   }
 
-  if (profileDropdown) {
-    profileDropdown.classList.toggle("is-open", state.profileMenuOpen);
+  if (profileInfo) {
+    profileInfo.classList.toggle("hidden", state.profileMenuOpen);
+  }
+
+  if (profileCaret) {
+    profileCaret.classList.toggle("hidden", state.profileMenuOpen);
+  }
+
+  if (dashboardLogoutButton) {
+    dashboardLogoutButton.classList.toggle("hidden", !state.profileMenuOpen);
   }
 }
 
@@ -1347,18 +1358,16 @@ function dashboardMarkup() {
           </button>
           <div class="toolbar-actions">
             <button class="secondary-button toolbar-button" id="refreshDashboardButton" type="button">Refresh</button>
-            <div class="profile-menu ${state.profileMenuOpen ? "is-open" : ""}">
+            <div class="profile-menu">
               <button class="profile-chip profile-chip-button" id="profileMenuButton" type="button" aria-haspopup="menu" aria-expanded="${state.profileMenuOpen ? "true" : "false"}">
                 <div class="profile-avatar">A</div>
-                <div>
+                <div class="profile-info ${state.profileMenuOpen ? "hidden" : ""}">
                   <strong>Admin</strong>
                   <span>Cafeteria session</span>
                 </div>
-                <span class="profile-caret">${state.profileMenuOpen ? "Ë„" : "Ë…"}</span>
+                <span class="profile-caret ${state.profileMenuOpen ? "hidden" : ""}">Ë…</span>
               </button>
-              <div class="profile-dropdown ${state.profileMenuOpen ? "is-open" : ""}" role="menu" aria-label="Admin menu">
-                <button class="profile-dropdown-item danger" id="dashboardLogoutButton" type="button" role="menuitem">Log Out</button>
-              </div>
+              <button class="profile-dropdown-item danger logout-chip ${state.profileMenuOpen ? "" : "hidden"}" id="dashboardLogoutButton" type="button">Log Out</button>
             </div>
           </div>
         </header>
@@ -1372,7 +1381,13 @@ function dashboardMarkup() {
 }
 
 function render() {
-  logoutButton.classList.toggle("hidden", !state.token);
+  if (adminIconTrigger) {
+    adminIconTrigger.classList.toggle("hidden", !state.token);
+  }
+  if (logoutButton) {
+    logoutButton.classList.add("hidden");
+  }
+
   if (shellTopbar) {
     shellTopbar.classList.toggle("hidden", Boolean(state.token));
   }
@@ -1397,6 +1412,13 @@ function bindEvents() {
   }
 
   logoutButton.onclick = logout;
+
+  if (adminIconTrigger) {
+    adminIconTrigger.onclick = (event) => {
+      event.stopPropagation();
+      logoutButton.classList.toggle("hidden");
+    };
+  }
 
   const dashboardLogoutButton = document.getElementById("dashboardLogoutButton");
   if (dashboardLogoutButton) {
