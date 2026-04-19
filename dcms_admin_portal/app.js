@@ -51,7 +51,6 @@ const state = {
 
 const appRoot = document.getElementById("appRoot");
 const serverStatus = document.getElementById("serverStatus");
-const adminIconTrigger = document.getElementById("adminIconTrigger");
 const logoutButton = document.getElementById("logoutButton");
 const shellTopbar = document.querySelector(".topbar");
 const pageShell = document.querySelector(".page-shell");
@@ -131,9 +130,7 @@ function showFlash(message, tone = "info") {
 function syncProfileMenu() {
   const profileMenu = document.querySelector(".profile-menu");
   const profileMenuButton = document.getElementById("profileMenuButton");
-  const profileCaret = document.querySelector(".profile-caret");
   const profileDropdown = document.querySelector(".profile-dropdown");
-  const dashboardLogoutButton = document.getElementById("dashboardLogoutButton");
 
   if (profileMenu) {
     profileMenu.classList.toggle("is-open", state.profileMenuOpen);
@@ -143,16 +140,8 @@ function syncProfileMenu() {
     profileMenuButton.setAttribute("aria-expanded", state.profileMenuOpen ? "true" : "false");
   }
 
-  if (profileCaret) {
-    profileCaret.textContent = state.profileMenuOpen ? "Ë„" : "Ë…";
-  }
-
   if (profileDropdown) {
     profileDropdown.classList.toggle("is-open", state.profileMenuOpen);
-  }
-
-  if (dashboardLogoutButton) {
-    dashboardLogoutButton.classList.toggle("hidden", !state.profileMenuOpen);
   }
 }
 
@@ -962,7 +951,6 @@ function dashboardMarkup() {
   }));
   const weeklyTrend = analytics.weeklyTrend || [];
   state.currentPage = getCurrentPageKey();
-  const currentSection = WORKSPACE_SECTIONS.find((section) => section.key === state.currentPage) || WORKSPACE_SECTIONS[0];
   const dashboardPage = `
     <section class="control-room-overview cafeteria-overview">
       <section class="overview-intro-card glass-card">
@@ -1350,37 +1338,26 @@ function dashboardMarkup() {
 
       <div class="dashboard-stage">
         <header class="dashboard-toolbar glass-card">
-          <div class="toolbar-leading">
-            <button class="toolbar-icon-button" id="toggleSidebarButton" type="button" aria-label="Open navigation menu">
-              <span class="hamburger-icon" aria-hidden="true">
-                <span></span>
-                <span></span>
-                <span></span>
-              </span>
-            </button>
-            <div class="toolbar-context">
-              <span class="toolbar-context-label">Cafeteria management</span>
-              <strong>${escapeHtml(currentSection.label)}</strong>
-              <small>${escapeHtml(currentSection.detail)}</small>
-            </div>
-          </div>
+          <button class="toolbar-icon-button" id="toggleSidebarButton" type="button" aria-label="Open navigation menu">
+            <span class="hamburger-icon" aria-hidden="true">
+              <span></span>
+              <span></span>
+              <span></span>
+            </span>
+          </button>
           <div class="toolbar-actions">
             <button class="secondary-button toolbar-button" id="refreshDashboardButton" type="button">Refresh</button>
-            <div class="profile-menu">
+            <div class="profile-menu ${state.profileMenuOpen ? "is-open" : ""}">
               <button class="profile-chip profile-chip-button" id="profileMenuButton" type="button" aria-haspopup="menu" aria-expanded="${state.profileMenuOpen ? "true" : "false"}">
                 <div class="profile-avatar">A</div>
-                <div class="profile-info">
+                <div>
                   <strong>Admin</strong>
                   <span>Cafeteria session</span>
                 </div>
-                <span class="profile-caret">Ë…</span>
+                <span class="profile-caret">${state.profileMenuOpen ? "Ë„" : "Ë…"}</span>
               </button>
-              <div class="profile-dropdown" role="menu" aria-label="Admin menu">
-                <div class="profile-dropdown-header">
-                  <strong>Administrator</strong>
-                  <span>${escapeHtml(config.portalName || "AIMST DCMS Control Room")}</span>
-                </div>
-                <button class="profile-dropdown-item danger ${state.profileMenuOpen ? "" : "hidden"}" id="dashboardLogoutButton" type="button" role="menuitem">Log Out</button>
+              <div class="profile-dropdown ${state.profileMenuOpen ? "is-open" : ""}" role="menu" aria-label="Admin menu">
+                <button class="profile-dropdown-item danger" id="dashboardLogoutButton" type="button" role="menuitem">Log Out</button>
               </div>
             </div>
           </div>
@@ -1395,13 +1372,7 @@ function dashboardMarkup() {
 }
 
 function render() {
-  if (adminIconTrigger) {
-    adminIconTrigger.classList.toggle("hidden", !state.token);
-  }
-  if (logoutButton) {
-    logoutButton.classList.add("hidden");
-  }
-
+  logoutButton.classList.toggle("hidden", !state.token);
   if (shellTopbar) {
     shellTopbar.classList.toggle("hidden", Boolean(state.token));
   }
@@ -1429,10 +1400,7 @@ function bindEvents() {
 
   const dashboardLogoutButton = document.getElementById("dashboardLogoutButton");
   if (dashboardLogoutButton) {
-    dashboardLogoutButton.addEventListener("click", (event) => {
-      event.stopPropagation();
-      logout();
-    });
+    dashboardLogoutButton.addEventListener("click", logout);
   }
 
   const profileMenuButton = document.getElementById("profileMenuButton");
@@ -1449,7 +1417,6 @@ function bindEvents() {
   const toggleSidebarButton = document.getElementById("toggleSidebarButton");
   if (toggleSidebarButton) {
     toggleSidebarButton.addEventListener("click", () => {
-      setProfileMenuOpen(false);
       state.sidebarOpen = !state.sidebarOpen;
       render();
     });
@@ -1465,10 +1432,7 @@ function bindEvents() {
 
   const refreshButton = document.getElementById("refreshDashboardButton");
   if (refreshButton) {
-    refreshButton.addEventListener("click", () => {
-      setProfileMenuOpen(false);
-      loadDashboard();
-    });
+    refreshButton.addEventListener("click", loadDashboard);
   }
 
   const saveScheduleButton = document.getElementById("saveScheduleButton");
