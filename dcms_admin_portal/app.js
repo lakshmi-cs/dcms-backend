@@ -130,7 +130,9 @@ function showFlash(message, tone = "info") {
 function syncProfileMenu() {
   const profileMenu = document.querySelector(".profile-menu");
   const profileMenuButton = document.getElementById("profileMenuButton");
+  const profileCaret = document.querySelector(".profile-caret");
   const profileDropdown = document.querySelector(".profile-dropdown");
+  const dashboardLogoutButton = document.getElementById("dashboardLogoutButton");
 
   if (profileMenu) {
     profileMenu.classList.toggle("is-open", state.profileMenuOpen);
@@ -138,6 +140,10 @@ function syncProfileMenu() {
 
   if (profileMenuButton) {
     profileMenuButton.setAttribute("aria-expanded", state.profileMenuOpen ? "true" : "false");
+  }
+
+  if (profileCaret) {
+    profileCaret.textContent = state.profileMenuOpen ? "Ë„" : "Ë…";
   }
 
   if (profileDropdown) {
@@ -951,6 +957,7 @@ function dashboardMarkup() {
   }));
   const weeklyTrend = analytics.weeklyTrend || [];
   state.currentPage = getCurrentPageKey();
+  const currentSection = WORKSPACE_SECTIONS.find((section) => section.key === state.currentPage) || WORKSPACE_SECTIONS[0];
   const dashboardPage = `
     <section class="control-room-overview cafeteria-overview">
       <section class="overview-intro-card glass-card">
@@ -1306,15 +1313,15 @@ function dashboardMarkup() {
       <aside class="dashboard-sidebar ${state.sidebarOpen ? "is-open" : ""}">
         <div class="dashboard-brand glass-card">
           <div class="brand-mark">DC</div>
-          <div>
+          <div class="dashboard-brand-copy">
             <strong>${escapeHtml(config.portalName || "AIMST DCMS Control Room")}</strong>
-            <span>Digital cafeteria admin</span>
+            <span>Hostel cafeteria administration</span>
           </div>
         </div>
 
         <div class="dashboard-sidebar-panel glass-card">
           <div class="dashboard-nav-group">
-            <span class="dashboard-nav-label">Core</span>
+            <span class="dashboard-nav-label">Overview</span>
             ${navLinkMarkup(WORKSPACE_SECTIONS[0])}
             ${navLinkMarkup(WORKSPACE_SECTIONS[1])}
             ${navLinkMarkup(WORKSPACE_SECTIONS[2])}
@@ -1338,25 +1345,48 @@ function dashboardMarkup() {
 
       <div class="dashboard-stage">
         <header class="dashboard-toolbar glass-card">
-          <button class="toolbar-icon-button" id="toggleSidebarButton" type="button" aria-label="Open navigation menu">
-            <span class="hamburger-icon" aria-hidden="true">
-              <span></span>
-              <span></span>
-              <span></span>
-            </span>
-          </button>
+          <div class="toolbar-leading">
+            <button class="toolbar-icon-button" id="toggleSidebarButton" type="button" aria-label="Open navigation menu">
+              <span class="hamburger-icon" aria-hidden="true">
+                <span></span>
+                <span></span>
+                <span></span>
+              </span>
+            </button>
+            <div class="toolbar-context">
+              <span class="toolbar-context-label">Cafeteria management</span>
+              <strong>${escapeHtml(currentSection.label)}</strong>
+              <small>${escapeHtml(currentSection.detail)}</small>
+            </div>
+          </div>
+          <form class="toolbar-search-shell" id="toolbarSearchForm">
+            <input
+              class="toolbar-search-input"
+              id="toolbarSearchInput"
+              type="search"
+              name="workspaceQuery"
+              placeholder="Search menu, notices, qr, records"
+              value="${escapeHtml(state.workspaceQuery)}"
+            />
+            <button class="toolbar-search-button" type="submit">Go</button>
+          </form>
           <div class="toolbar-actions">
+            <span class="toolbar-status-pill">${escapeHtml(content.serverDate || dashboard.serverDate || "Today")}</span>
             <button class="secondary-button toolbar-button" id="refreshDashboardButton" type="button">Refresh</button>
-            <div class="profile-menu ${state.profileMenuOpen ? "is-open" : ""}">
+            <div class="profile-menu">
               <button class="profile-chip profile-chip-button" id="profileMenuButton" type="button" aria-haspopup="menu" aria-expanded="${state.profileMenuOpen ? "true" : "false"}">
                 <div class="profile-avatar">A</div>
-                <div>
+                <div class="profile-info">
                   <strong>Admin</strong>
                   <span>Cafeteria session</span>
                 </div>
-                <span class="profile-caret">${state.profileMenuOpen ? "Ë„" : "Ë…"}</span>
+                <span class="profile-caret">Ë…</span>
               </button>
-              <div class="profile-dropdown ${state.profileMenuOpen ? "is-open" : ""}" role="menu" aria-label="Admin menu">
+              <div class="profile-dropdown" role="menu" aria-label="Admin menu">
+                <div class="profile-dropdown-header">
+                  <strong>Administrator</strong>
+                  <span>${escapeHtml(config.portalName || "AIMST DCMS Control Room")}</span>
+                </div>
                 <button class="profile-dropdown-item danger" id="dashboardLogoutButton" type="button" role="menuitem">Log Out</button>
               </div>
             </div>
@@ -1372,7 +1402,10 @@ function dashboardMarkup() {
 }
 
 function render() {
-  logoutButton.classList.toggle("hidden", !state.token);
+  if (logoutButton) {
+    logoutButton.classList.add("hidden");
+  }
+
   if (shellTopbar) {
     shellTopbar.classList.toggle("hidden", Boolean(state.token));
   }
@@ -1397,17 +1430,34 @@ function bindEvents() {
   }
 
   logoutButton.onclick = logout;
-
-  const dashboardLogoutButton = document.getElementById("dashboardLogoutButton");
-  if (dashboardLogoutButton) {
-    dashboardLogoutButton.addEventListener("click", logout);
-  }
-
   const profileMenuButton = document.getElementById("profileMenuButton");
   if (profileMenuButton) {
     profileMenuButton.addEventListener("click", (event) => {
       event.stopPropagation();
       setProfileMenuOpen(!state.profileMenuOpen);
+    });
+  }
+
+  const toolbarSearchForm = document.getElementById("toolbarSearchForm");
+  if (toolbarSearchForm) {
+    toolbarSearchForm.addEventListener("submit", (event) => {
+      event.preventDefault();
+      const query = new FormData(toolbarSearchForm).get("workspaceQuery");
+      state.workspaceQuery = String(query || "");
+      const matchedSection = resolveWorkspaceSection(state.workspaceQuery);
+      if (matchedSection) {
+        window.location.href = pageUrl(matchedSection.key);
+        return;
+      }
+      showFlash("No matching section found for that search", "info");
+    });
+  }
+
+  const dashboardLogoutButton = document.getElementById("dashboardLogoutButton");
+  if (dashboardLogoutButton) {
+    dashboardLogoutButton.addEventListener("click", (event) => {
+      event.stopPropagation();
+      logout();
     });
   }
 
@@ -1417,6 +1467,7 @@ function bindEvents() {
   const toggleSidebarButton = document.getElementById("toggleSidebarButton");
   if (toggleSidebarButton) {
     toggleSidebarButton.addEventListener("click", () => {
+      setProfileMenuOpen(false);
       state.sidebarOpen = !state.sidebarOpen;
       render();
     });
@@ -1432,7 +1483,10 @@ function bindEvents() {
 
   const refreshButton = document.getElementById("refreshDashboardButton");
   if (refreshButton) {
-    refreshButton.addEventListener("click", loadDashboard);
+    refreshButton.addEventListener("click", () => {
+      setProfileMenuOpen(false);
+      loadDashboard();
+    });
   }
 
   const saveScheduleButton = document.getElementById("saveScheduleButton");
