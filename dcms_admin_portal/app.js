@@ -963,7 +963,7 @@ function dashboardMarkup() {
       <section class="overview-intro-card glass-card">
         <div>
           <p class="eyebrow">Dashboard</p>
-          <h2>AIMST DCMS cafeteria management</h2>
+          <h2>DCMS cafeteria management</h2>
           <p class="panel-copy">Track student demand, meal readiness, and coupon activity in one place without extra dashboard clutter.</p>
         </div>
         <div class="overview-intro-meta">
