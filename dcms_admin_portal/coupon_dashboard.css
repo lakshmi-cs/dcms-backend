@@ -1,0 +1,133 @@
+.coupon-dashboard-layout {
+  display: grid;
+  gap: 24px;
+  padding: 24px 0 48px;
+}
+
+.coupon-summary-panel,
+.coupon-management-panel,
+.coupon-chart-card {
+  padding: 24px;
+}
+
+.coupon-summary-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 16px;
+  margin-bottom: 20px;
+}
+
+.coupon-stats-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 16px;
+  margin-bottom: 20px;
+}
+
+.coupon-stat-card {
+  padding: 18px;
+  border-radius: 20px;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.coupon-stat-card span,
+.coupon-stat-card small,
+.coupon-chart-card,
+.flash-inline {
+  color: rgba(255, 255, 255, 0.78);
+}
+
+.coupon-stat-card strong {
+  display: block;
+  margin: 8px 0 4px;
+  color: #fff;
+  font-size: 30px;
+}
+
+.coupon-chart-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 20px;
+}
+
+.coupon-toolbar {
+  display: grid;
+  grid-template-columns: 1.2fr 1fr 0.9fr auto;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.coupon-filter-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.filter-chip {
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  background: rgba(255, 255, 255, 0.05);
+  color: #fff;
+  padding: 10px 16px;
+  border-radius: 999px;
+  cursor: pointer;
+}
+
+.filter-chip.active {
+  background: rgba(76, 175, 80, 0.2);
+  border-color: rgba(76, 175, 80, 0.5);
+}
+
+.flash-inline {
+  padding: 14px 16px;
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.05);
+  margin-bottom: 16px;
+}
+
+.flash-inline.success {
+  background: rgba(76, 175, 80, 0.14);
+}
+
+.flash-inline.danger {
+  background: rgba(244, 67, 54, 0.14);
+}
+
+.flash-inline.neutral {
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.coupon-status-pill {
+  padding: 6px 12px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.coupon-status-pill.ACTIVE {
+  background: rgba(76, 175, 80, 0.16);
+  color: #8ff3a0;
+}
+
+.coupon-status-pill.REDEEMED {
+  background: rgba(158, 158, 158, 0.2);
+  color: #e0e0e0;
+}
+
+.coupon-status-pill.EXPIRED {
+  background: rgba(244, 67, 54, 0.16);
+  color: #ff9e9e;
+}
+
+.coupon-table-actions {
+  display: flex;
+  gap: 10px;
+}
+
+@media (max-width: 980px) {
+  .coupon-toolbar {
+    grid-template-columns: 1fr;
+  }
+}
