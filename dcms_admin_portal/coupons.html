@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>DCMS Coupon Dashboard</title>
+    <link rel="stylesheet" href="./styles.css" />
+    <link rel="stylesheet" href="./coupon_dashboard.css" />
+  </head>
+  <body class="coupon-dashboard-body">
+    <div class="background-orb orb-one"></div>
+    <div class="background-orb orb-two"></div>
+    <div class="background-grid"></div>
+
+    <div class="page-shell">
+      <header class="topbar">
+        <div class="topbar-branding">
+          <div class="topbar-brand-mark">DC</div>
+          <div class="topbar-brand-copy">
+            <p class="eyebrow">AIMST University</p>
+            <h1>Coupon Redemption Dashboard</h1>
+            <span>Monitor, search, redeem, and analyze economy food coupons</span>
+          </div>
+        </div>
+        <div class="topbar-actions">
+          <span class="status-pill" id="serverStatus">Backend connection pending</span>
+          <a class="ghost-button" href="./index.html">Back To Portal</a>
+        </div>
+      </header>
+
+      <main class="coupon-dashboard-layout">
+        <section class="glass-card coupon-summary-panel">
+          <div class="coupon-summary-header">
+            <div>
+              <p class="eyebrow">Live analytics</p>
+              <h2>Economy Food Coupon Analytics</h2>
+            </div>
+            <button class="secondary-button" id="refreshButton" type="button">Refresh</button>
+          </div>
+          <div class="coupon-stats-grid" id="statsGrid"></div>
+          <div class="coupon-chart-grid">
+            <article class="glass-card coupon-chart-card">
+              <div class="section-row compact">
+                <div>
+                  <p class="eyebrow">Peak hours</p>
+                  <h3>Peak Ordering Hours</h3>
+                </div>
+              </div>
+              <div id="peakHoursList" class="bar-chart-list"></div>
+            </article>
+            <article class="glass-card coupon-chart-card">
+              <div class="section-row compact">
+                <div>
+                  <p class="eyebrow">Food popularity</p>
+                  <h3>Most Selected Food</h3>
+                </div>
+              </div>
+              <div id="popularFoodList" class="bar-chart-list"></div>
+            </article>
+          </div>
+        </section>
+
+        <section class="glass-card coupon-management-panel">
+          <div class="coupon-summary-header">
+            <div>
+              <p class="eyebrow">Redemption operations</p>
+              <h2>Coupon Management</h2>
+            </div>
+          </div>
+
+          <form class="coupon-toolbar" id="searchForm">
+            <input
+              class="toolbar-search-input"
+              id="apiBaseUrlInput"
+              type="url"
+              placeholder="https://your-render-backend.onrender.com"
+            />
+            <input
+              class="toolbar-search-input"
+              id="searchInput"
+              type="search"
+              placeholder="Search by coupon code or student ID"
+            />
+            <input
+              class="toolbar-search-input"
+              id="operatorInput"
+              type="text"
+              placeholder="Operator name"
+              value="Admin Portal"
+            />
+            <button class="primary-button" type="submit">Search</button>
+          </form>
+
+          <div class="coupon-filter-row">
+            <button class="filter-chip active" data-status="ACTIVE" type="button">Active</button>
+            <button class="filter-chip" data-status="REDEEMED" type="button">Redeemed</button>
+            <button class="filter-chip" data-status="EXPIRED" type="button">Expired</button>
+            <button class="filter-chip" data-status="" type="button">All</button>
+          </div>
+
+          <div id="flashMessage" class="flash-inline neutral">Load the latest coupons from your Render backend.</div>
+          <div id="couponTableShell" class="table-shell"></div>
+        </section>
+      </main>
+    </div>
+
+    <script src="./config.js"></script>
+    <script src="./coupon_dashboard.js"></script>
+  </body>
+</html>
