@@ -583,7 +583,7 @@ function newsCards(news) {
 
 function redemptionsMarkup(redemptions) {
   if (!redemptions.length) {
-    return `<div class="empty-card">No QR redemptions have been recorded today.</div>`;
+    return `<div class="empty-card">No coupon activity has been recorded today.</div>`;
   }
 
   return `
@@ -591,6 +591,7 @@ function redemptionsMarkup(redemptions) {
       <table>
         <thead>
           <tr>
+            <th>Coupon Code</th>
             <th>Student</th>
             <th>Coupon</th>
             <th>Meal</th>
@@ -604,6 +605,7 @@ function redemptionsMarkup(redemptions) {
             .map(
               (item) => `
                 <tr>
+                  <td>${escapeHtml(item.couponCode || "--")}</td>
                   <td>${escapeHtml(item.studentId)}</td>
                   <td>${escapeHtml(item.couponType)}</td>
                   <td>${escapeHtml(item.mealCode)}</td>
@@ -620,11 +622,55 @@ function redemptionsMarkup(redemptions) {
   `;
 }
 
+function activeCouponsMarkup(redemptions) {
+  const activeCoupons = redemptions.filter((item) => String(item.status).toLowerCase() === "issued");
+  if (!activeCoupons.length) {
+    return `<div class="empty-card">No active coupons are waiting for collection right now.</div>`;
+  }
+
+  return `
+    <div class="table-shell">
+      <table>
+        <thead>
+          <tr>
+            <th>Coupon Code</th>
+            <th>Student</th>
+            <th>Coupon</th>
+            <th>Meal</th>
+            <th>Expires</th>
+            <th>Action</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${activeCoupons
+            .map(
+              (item) => `
+                <tr>
+                  <td>${escapeHtml(item.couponCode || "--")}</td>
+                  <td>${escapeHtml(item.studentId)}</td>
+                  <td>${escapeHtml(item.couponType)}</td>
+                  <td>${escapeHtml(item.mealCode)}</td>
+                  <td>${escapeHtml(formatDateTime(item.expiresAt))}</td>
+                  <td>
+                    <button type="button" class="primary-button" data-redeem-code="${escapeHtml(item.couponCode || "")}">
+                      Redeem
+                    </button>
+                  </td>
+                </tr>
+              `,
+            )
+            .join("")}
+        </tbody>
+      </table>
+    </div>
+  `;
+}
+
 function validatorResultMarkup() {
   if (!state.validationResult) {
     return `
       <div class="validator-result placeholder">
-        Scan or paste a student coupon QR token here to verify it against the live cafeteria service window.
+        Enter a coupon code or redeem directly from the active coupon list below.
       </div>
     `;
   }
@@ -632,6 +678,7 @@ function validatorResultMarkup() {
   return `
     <div class="validator-result success">
       <strong>Redeemed successfully</strong>
+      <p>Coupon Code: ${escapeHtml(state.validationResult.couponCode || "--")}</p>
       <p>Student ID: ${escapeHtml(state.validationResult.studentId)}</p>
       <p>Coupon: ${escapeHtml(state.validationResult.couponType)}</p>
       <p>Meal: ${escapeHtml(state.validationResult.mealCode)}</p>
@@ -1048,9 +1095,8 @@ function dashboardMarkup() {
     ${pageHeaderMarkup(
       "Service operations",
       "Meal Hours",
-      "This page focuses only on cafeteria operating hours and the counter QR so staff can prepare service without extra distractions.",
-      `<button type="button" class="secondary-button" id="saveScheduleButton">Save Hours</button>
-       <button type="button" class="secondary-button" id="generateSessionQrButton">Generate QR</button>`,
+      "This page focuses only on cafeteria operating hours so staff can prepare service without extra distractions.",
+      `<button type="button" class="secondary-button" id="saveScheduleButton">Save Hours</button>`,
       `Server time: ${escapeHtml(serverStamp || "Unavailable")}`,
     )}
     <section class="module-section">
@@ -1083,33 +1129,11 @@ function dashboardMarkup() {
           <div class="section-row">
             <div>
               <p class="eyebrow">Counter</p>
-              <h3>Session display QR</h3>
+              <h3>Meal window status</h3>
             </div>
           </div>
-          <p class="panel-copy">Display this at the counter so operators know which meal service is active or prepared next.</p>
-          <div class="session-qr-controls">
-            <label>
-              <span>Select meal</span>
-              <select id="sessionMealCode">
-                ${mealWindows
-                  .map(
-                    (window) => `
-                      <option value="${escapeHtml(window.mealCode)}" ${activeMeal.mealCode === window.mealCode ? "selected" : ""}>
-                        ${escapeHtml(window.mealName)}
-                      </option>
-                    `,
-                  )
-                  .join("")}
-              </select>
-            </label>
-          </div>
-          <div class="qr-shell">
-            <canvas id="sessionQrCanvas" width="220" height="220"></canvas>
-            <div class="qr-caption">
-              <strong>${state.sessionQr ? escapeHtml(state.sessionQr.meal.mealName) : "Generate a live counter QR"}</strong>
-              <p>${state.sessionQr ? escapeHtml(state.sessionQr.meal.timeLabel) : "Use this during breakfast, lunch, or dinner service."}</p>
-            </div>
-          </div>
+          <p class="panel-copy">Coupon collection no longer uses QR scanning. Staff only need the live meal window and active coupon list.</p>
+          <div class="empty-card">Current meal: ${escapeHtml(activeMeal.mealName || "No active meal")}<br/>Window: ${escapeHtml(activeMeal.timeLabel || "Waiting for next session")}</div>
         </article>
       </div>
     </section>
@@ -1234,11 +1258,11 @@ function dashboardMarkup() {
   `;
   const validationPage = `
     ${pageHeaderMarkup(
-      "Counter validation",
-      "Scan QR",
-      "This page is dedicated to validating and redeeming student QR tokens against the live backend.",
+      "Coupon redemption",
+      "Redeem Coupons",
+      "This page is dedicated to finding active student coupons and redeeming them without any QR scanning flow.",
       "",
-      `Use operator name plus the student token for a proper redemption record.`,
+      `Use operator name plus the coupon code for a proper redemption record.`,
     )}
     <section class="module-section">
       <div class="content-grid content-grid--sidebar">
@@ -1249,22 +1273,29 @@ function dashboardMarkup() {
               <input type="text" name="operatorName" placeholder="Cafeteria staff name" />
             </label>
             <label>
-              <span>Student QR token</span>
-              <textarea name="token" rows="6" placeholder="Paste or scan the full QR token here"></textarea>
+              <span>Coupon code</span>
+              <input type="text" name="couponCode" placeholder="Enter coupon code, e.g. DCMS-4821" />
             </label>
-            <button type="submit" class="primary-button">Validate And Redeem</button>
+            <button type="submit" class="primary-button">Redeem Coupon</button>
           </form>
           ${validatorResultMarkup()}
+          <div class="section-row compact" style="margin-top:20px;">
+            <div>
+              <p class="eyebrow">Live queue</p>
+              <h3>Active Coupons</h3>
+            </div>
+          </div>
+          ${activeCouponsMarkup(redemptions)}
         </article>
         <div class="page-aside">
           ${appImpactCardMarkup(
-            "Student QR sync",
-            "The token validated here comes directly from the student app QR generation flow.",
-            "If the student app generated the QR during an active meal window, this page can verify and redeem it against the shared backend immediately.",
+            "Student coupon sync",
+            "The active coupons listed here come directly from the student app coupon generation flow.",
+            "When a student shows the coupon code on their app, staff can search it here or redeem it from the active queue immediately.",
             [
-              { label: "QR issued today", value: String(stats.qrIssuedToday || 0) },
+              { label: "Coupons issued today", value: String(stats.qrIssuedToday || 0) },
               { label: "Redeemed today", value: String(stats.qrRedeemedToday || 0) },
-              { label: "App flow", value: "Home tab coupon QR" },
+              { label: "App flow", value: "Home page coupon code" },
             ],
           )}
         </div>
@@ -1415,7 +1446,6 @@ function render() {
   appRoot.innerHTML = state.token ? dashboardMarkup() : loginMarkup();
   bindEvents();
   syncProfileMenu();
-  renderSessionQr();
 }
 
 function bindEvents() {
@@ -1505,15 +1535,14 @@ function bindEvents() {
     saveMenusButton.addEventListener("click", saveMenus);
   }
 
-  const generateSessionQrButton = document.getElementById("generateSessionQrButton");
-  if (generateSessionQrButton) {
-    generateSessionQrButton.addEventListener("click", generateSessionQr);
-  }
-
   const validatorForm = document.getElementById("validatorForm");
   if (validatorForm) {
-    validatorForm.addEventListener("submit", validateCouponQr);
+    validatorForm.addEventListener("submit", redeemCouponCode);
   }
+
+  document.querySelectorAll("[data-redeem-code]").forEach((button) => {
+    button.addEventListener("click", () => redeemCouponCode(null, button.dataset.redeemCode));
+  });
 
   const newsForm = document.getElementById("newsForm");
   if (newsForm) {
@@ -1584,80 +1613,26 @@ async function saveMenus() {
   }
 }
 
-async function generateSessionQr() {
-  const selector = document.getElementById("sessionMealCode");
-  const mealCode = selector ? selector.value : "";
+async function redeemCouponCode(event, couponCodeFromButton) {
+  if (event) {
+    event.preventDefault();
+  }
+  const form = document.getElementById("validatorForm");
+  const formData = form ? new FormData(form) : new FormData();
+  const couponCode = couponCodeFromButton || formData.get("couponCode");
 
   try {
-    state.sessionQr = await api("/admin/qr/session", {
-      method: "POST",
-      body: { mealCode },
-    });
-    renderSessionQr();
-    showFlash("Session QR generated", "success");
-  } catch (error) {
-    showFlash(error.message || "Unable to generate session QR", "danger");
-  }
-}
-
-function renderSessionQr() {
-  const canvas = document.getElementById("sessionQrCanvas");
-  if (!canvas) return;
-
-  const context = canvas.getContext("2d");
-  context.clearRect(0, 0, canvas.width, canvas.height);
-  context.fillStyle = "#f7f7f7";
-  context.fillRect(0, 0, canvas.width, canvas.height);
-
-  if (!state.sessionQr || !state.sessionQr.qrValue) {
-    context.fillStyle = "#99a3c2";
-    context.font = "15px Segoe UI";
-    context.textAlign = "center";
-    context.fillText("QR preview", canvas.width / 2, canvas.height / 2 - 10);
-    context.fillText("will appear here", canvas.width / 2, canvas.height / 2 + 18);
-    return;
-  }
-
-  if (!window.QRCode) {
-    showFlash("QR library failed to load from CDN", "danger");
-    return;
-  }
-
-  window.QRCode.toCanvas(
-    canvas,
-    state.sessionQr.qrValue,
-    {
-      width: 220,
-      margin: 1,
-      color: {
-        dark: "#132042",
-        light: "#f7f7f7",
-      },
-    },
-    (error) => {
-      if (error) {
-        showFlash("Unable to render QR canvas", "danger");
-      }
-    },
-  );
-}
-
-async function validateCouponQr(event) {
-  event.preventDefault();
-  const formData = new FormData(event.currentTarget);
-
-  try {
-    state.validationResult = await api("/admin/qr/validate", {
+    state.validationResult = await api("/admin/coupons/redeem", {
       method: "POST",
       body: {
         operatorName: formData.get("operatorName"),
-        token: formData.get("token"),
+        couponCode,
       },
     });
-    showFlash("Student QR redeemed successfully", "success");
+    showFlash("Coupon redeemed successfully", "success");
     await loadDashboard();
   } catch (error) {
-    showFlash(error.message || "Unable to validate QR", "danger");
+    showFlash(error.message || "Unable to redeem coupon", "danger");
   }
 }
 
