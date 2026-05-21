@@ -57,10 +57,9 @@ const pageShell = document.querySelector(".page-shell");
 
 const WORKSPACE_SECTIONS = [
   { key: "overview", label: "Dashboard", detail: "Cafeteria overview", terms: ["dashboard", "overview", "home", "summary"] },
-  { key: "service", label: "Meal Hours", detail: "Opening times and counter QR", terms: ["service", "meal", "windows", "schedule", "hours", "qr", "counter"] },
+  { key: "service", label: "Meal Hours", detail: "Opening times", terms: ["service", "meal", "windows", "schedule", "hours", "counter"] },
   { key: "menu", label: "Daily Menu", detail: "Breakfast, lunch, and dinner", terms: ["menu", "publishing", "breakfast", "lunch", "dinner", "meals"] },
   { key: "news", label: "Notices", detail: "Student announcements", terms: ["news", "announcement", "broadcast", "draft", "published", "notice"] },
-  { key: "validation", label: "Scan QR", detail: "Redeem student coupons", terms: ["validation", "redeem", "coupon", "token", "operator", "scan"] },
   { key: "activity", label: "Student Records", detail: "Recent coupon activity", terms: ["activity", "log", "redemption", "history", "audit", "records"] },
 ];
 
@@ -143,7 +142,7 @@ function syncProfileMenu() {
   }
 
   if (profileCaret) {
-    profileCaret.textContent = state.profileMenuOpen ? "Ë„" : "Ë…";
+    profileCaret.textContent = state.profileMenuOpen ? "˄" : "˅";
   }
 
   if (profileDropdown) {
@@ -221,7 +220,7 @@ async function checkHealth() {
     const data = await api("/health", { auth: false });
     const label = data.activeMeal?.isActive
       ? `${data.activeMeal.mealName} is live`
-      : `Connected Â· ${data.timeZone}`;
+      : `Connected · ${data.timeZone}`;
     setServerStatus(label, "success");
   } catch (error) {
     setServerStatus("Backend unavailable", "danger");
@@ -485,7 +484,7 @@ function newsPreviewMarkup(news) {
             (item) => `
               <div class="app-preview-item">
                 <strong>${escapeHtml(item.title || "Announcement")}</strong>
-                <span>${escapeHtml(item.status || "published")} Â· ${escapeHtml(formatDateTime(item.publishAt))}</span>
+                <span>${escapeHtml(item.status || "published")} · ${escapeHtml(formatDateTime(item.publishAt))}</span>
               </div>
             `,
           )
@@ -618,71 +617,6 @@ function redemptionsMarkup(redemptions) {
             .join("")}
         </tbody>
       </table>
-    </div>
-  `;
-}
-
-function activeCouponsMarkup(redemptions) {
-  const activeCoupons = redemptions.filter((item) => String(item.status).toLowerCase() === "issued");
-  if (!activeCoupons.length) {
-    return `<div class="empty-card">No active coupons are waiting for collection right now.</div>`;
-  }
-
-  return `
-    <div class="table-shell">
-      <table>
-        <thead>
-          <tr>
-            <th>Coupon Code</th>
-            <th>Student</th>
-            <th>Coupon</th>
-            <th>Meal</th>
-            <th>Expires</th>
-            <th>Action</th>
-          </tr>
-        </thead>
-        <tbody>
-          ${activeCoupons
-            .map(
-              (item) => `
-                <tr>
-                  <td>${escapeHtml(item.couponCode || "--")}</td>
-                  <td>${escapeHtml(item.studentId)}</td>
-                  <td>${escapeHtml(item.couponType)}</td>
-                  <td>${escapeHtml(item.mealCode)}</td>
-                  <td>${escapeHtml(formatDateTime(item.expiresAt))}</td>
-                  <td>
-                    <button type="button" class="primary-button" data-redeem-code="${escapeHtml(item.couponCode || "")}">
-                      Redeem
-                    </button>
-                  </td>
-                </tr>
-              `,
-            )
-            .join("")}
-        </tbody>
-      </table>
-    </div>
-  `;
-}
-
-function validatorResultMarkup() {
-  if (!state.validationResult) {
-    return `
-      <div class="validator-result placeholder">
-        Enter a coupon code or redeem directly from the active coupon list below.
-      </div>
-    `;
-  }
-
-  return `
-    <div class="validator-result success">
-      <strong>Redeemed successfully</strong>
-      <p>Coupon Code: ${escapeHtml(state.validationResult.couponCode || "--")}</p>
-      <p>Student ID: ${escapeHtml(state.validationResult.studentId)}</p>
-      <p>Coupon: ${escapeHtml(state.validationResult.couponType)}</p>
-      <p>Meal: ${escapeHtml(state.validationResult.mealCode)}</p>
-      <p>Time: ${escapeHtml(formatDateTime(state.validationResult.redeemedAt))}</p>
     </div>
   `;
 }
@@ -830,7 +764,7 @@ function serviceSnapshotMarkup(activeMeal, serverStamp, stats, mealWindows) {
         ${snapshotItemMarkup("Server time", serverStamp || "Unavailable", "Live backend time")}
         ${snapshotItemMarkup("Menus ready", String(stats.menusConfigured || 0), "Meals published today")}
         ${snapshotItemMarkup("News live", String(stats.publishedNews || 0), "Visible in the app")}
-        ${snapshotItemMarkup("QR redeemed", String(stats.qrRedeemedToday || 0), "Successful scans today")}
+        ${snapshotItemMarkup("Coupons redeemed", String(stats.qrRedeemedToday || 0), "Successful redemptions today")}
       </div>
     </article>
   `;
@@ -850,7 +784,7 @@ function redemptionMiniListMarkup(redemptions) {
             <div class="activity-mini-item">
               <div>
                 <strong>${escapeHtml(item.studentId)}</strong>
-                <span>${escapeHtml(`${item.couponType} Â· ${item.mealCode}`)}</span>
+                <span>${escapeHtml(`${item.couponType} · ${item.mealCode}`)}</span>
               </div>
               <small>${escapeHtml(item.redeemedAt ? formatRelativeTime(item.redeemedAt) : formatRelativeTime(item.issuedAt))}</small>
             </div>
@@ -1023,7 +957,7 @@ function dashboardMarkup() {
         ${summaryKpiMarkup("Registered students", formatCompactNumber(registeredStudents), "Users linked to the DCMS app", "summary-kpi-card--students")}
         ${summaryKpiMarkup("Students served today", formatCompactNumber(activeStudentsToday), "Distinct students with coupons today", "summary-kpi-card--served")}
         ${summaryKpiMarkup("Coupons issued today", formatCompactNumber(stats.qrIssuedToday || 0), "Generated from the student app", "summary-kpi-card--issued")}
-        ${summaryKpiMarkup("Coupons redeemed today", formatCompactNumber(stats.qrRedeemedToday || 0), "Successfully scanned at the counter", "summary-kpi-card--redeemed")}
+        ${summaryKpiMarkup("Coupons redeemed today", formatCompactNumber(stats.qrRedeemedToday || 0), "Successfully redeemed at the counter", "summary-kpi-card--redeemed")}
       </section>
 
       <section class="dashboard-chart-grid">
@@ -1102,13 +1036,13 @@ function dashboardMarkup() {
     <section class="module-section">
       <div class="content-grid">
         ${appImpactCardMarkup(
-          "Meal windows and QR flow",
-          "These settings affect the student app coupon timing and cafeteria QR operations.",
-          "Students can only generate meal coupons inside active meal windows, and staff validate those QR tokens against the same live backend.",
+          "Meal windows and coupon flow",
+          "These settings affect the student app coupon timing and cafeteria operations.",
+          "Students can only generate meal coupons inside active meal windows, and staff validate those tokens against the same live backend.",
           [
             { label: "Active meal", value: liveMealLabel },
             { label: "Meal window", value: liveMealDetail },
-            { label: "App surface", value: "Home tab + QR generation" },
+            { label: "App surface", value: "Home tab + coupon generation" },
           ],
         )}
       </div>
@@ -1120,7 +1054,7 @@ function dashboardMarkup() {
               <h3>Meal windows</h3>
             </div>
           </div>
-          <p class="panel-copy">Update these hours carefully because they affect live student coupon generation and validation.</p>
+          <p class="panel-copy">Update these hours carefully because they affect live student coupon generation.</p>
           <form id="scheduleForm" class="stacked-form">
             ${mealWindowRows(mealWindows)}
           </form>
@@ -1142,7 +1076,7 @@ function dashboardMarkup() {
     ${pageHeaderMarkup(
       "Student content",
       "Daily Menu",
-      "This page is only for today's menu. Publish clean meal items here without mixing them with news or QR validation tasks.",
+      "This page is only for today's menu. Publish clean meal items here without mixing them with news tasks.",
       `<button type="button" class="secondary-button" id="saveMenusButton">Publish Menu</button>`,
       `Student app reads these items from the shared backend after refresh.`,
     )}
@@ -1256,52 +1190,6 @@ function dashboardMarkup() {
       </section>
     </section>
   `;
-  const validationPage = `
-    ${pageHeaderMarkup(
-      "Coupon redemption",
-      "Redeem Coupons",
-      "This page is dedicated to finding active student coupons and redeeming them without any QR scanning flow.",
-      "",
-      `Use operator name plus the coupon code for a proper redemption record.`,
-    )}
-    <section class="module-section">
-      <div class="content-grid content-grid--sidebar">
-        <article class="glass-card panel-card">
-          <form id="validatorForm" class="stacked-form">
-            <label>
-              <span>Operator name</span>
-              <input type="text" name="operatorName" placeholder="Cafeteria staff name" />
-            </label>
-            <label>
-              <span>Coupon code</span>
-              <input type="text" name="couponCode" placeholder="Enter coupon code, e.g. DCMS-4821" />
-            </label>
-            <button type="submit" class="primary-button">Redeem Coupon</button>
-          </form>
-          ${validatorResultMarkup()}
-          <div class="section-row compact" style="margin-top:20px;">
-            <div>
-              <p class="eyebrow">Live queue</p>
-              <h3>Active Coupons</h3>
-            </div>
-          </div>
-          ${activeCouponsMarkup(redemptions)}
-        </article>
-        <div class="page-aside">
-          ${appImpactCardMarkup(
-            "Student coupon sync",
-            "The active coupons listed here come directly from the student app coupon generation flow.",
-            "When a student shows the coupon code on their app, staff can search it here or redeem it from the active queue immediately.",
-            [
-              { label: "Coupons issued today", value: String(stats.qrIssuedToday || 0) },
-              { label: "Redeemed today", value: String(stats.qrRedeemedToday || 0) },
-              { label: "App flow", value: "Home page coupon code" },
-            ],
-          )}
-        </div>
-      </div>
-    </section>
-  `;
   const activityPage = `
     ${pageHeaderMarkup(
       "Audit trail",
@@ -1323,7 +1211,7 @@ function dashboardMarkup() {
             [
               { label: "Issued", value: String(stats.qrIssuedToday || 0) },
               { label: "Redeemed", value: String(stats.qrRedeemedToday || 0) },
-              { label: "Linked flow", value: "App QR + admin validation" },
+              { label: "Linked flow", value: "App coupon flow" },
             ],
           )}
         </div>
@@ -1335,7 +1223,6 @@ function dashboardMarkup() {
     service: servicePage,
     menu: menuPage,
     news: newsPage,
-    validation: validationPage,
     activity: activityPage,
   };
   return `
@@ -1353,16 +1240,12 @@ function dashboardMarkup() {
         <div class="dashboard-sidebar-panel glass-card">
           <div class="dashboard-nav-group">
             <span class="dashboard-nav-label">Overview</span>
-            ${navLinkMarkup(WORKSPACE_SECTIONS[0])}
-            ${navLinkMarkup(WORKSPACE_SECTIONS[1])}
-            ${navLinkMarkup(WORKSPACE_SECTIONS[2])}
+            ${WORKSPACE_SECTIONS.slice(0, 3).map(section => navLinkMarkup(section)).join('')}
           </div>
 
           <div class="dashboard-nav-group">
             <span class="dashboard-nav-label">Operations</span>
-            ${navLinkMarkup(WORKSPACE_SECTIONS[3])}
-            ${navLinkMarkup(WORKSPACE_SECTIONS[4])}
-            ${navLinkMarkup(WORKSPACE_SECTIONS[5])}
+            ${WORKSPACE_SECTIONS.slice(3).map(section => navLinkMarkup(section)).join('')}
           </div>
         </div>
 
@@ -1396,7 +1279,7 @@ function dashboardMarkup() {
               id="toolbarSearchInput"
               type="search"
               name="workspaceQuery"
-              placeholder="Search menu, notices, qr, records"
+              placeholder="Search menu, notices, records"
               value="${escapeHtml(state.workspaceQuery)}"
             />
             <button class="toolbar-search-button" type="submit">Go</button>
@@ -1411,7 +1294,7 @@ function dashboardMarkup() {
                   <strong>Admin</strong>
                   <span>Cafeteria session</span>
                 </div>
-                <span class="profile-caret">Ë…</span>
+                <span class="profile-caret">˅</span>
               </button>
               <div class="profile-dropdown" role="menu" aria-label="Admin menu">
                 <div class="profile-dropdown-header">
@@ -1535,15 +1418,6 @@ function bindEvents() {
     saveMenusButton.addEventListener("click", saveMenus);
   }
 
-  const validatorForm = document.getElementById("validatorForm");
-  if (validatorForm) {
-    validatorForm.addEventListener("submit", redeemCouponCode);
-  }
-
-  document.querySelectorAll("[data-redeem-code]").forEach((button) => {
-    button.addEventListener("click", () => redeemCouponCode(null, button.dataset.redeemCode));
-  });
-
   const newsForm = document.getElementById("newsForm");
   if (newsForm) {
     newsForm.addEventListener("submit", saveNews);
@@ -1610,29 +1484,6 @@ async function saveMenus() {
     await loadDashboard();
   } catch (error) {
     showFlash(error.message || "Unable to save menu", "danger");
-  }
-}
-
-async function redeemCouponCode(event, couponCodeFromButton) {
-  if (event) {
-    event.preventDefault();
-  }
-  const form = document.getElementById("validatorForm");
-  const formData = form ? new FormData(form) : new FormData();
-  const couponCode = couponCodeFromButton || formData.get("couponCode");
-
-  try {
-    state.validationResult = await api("/admin/coupons/redeem", {
-      method: "POST",
-      body: {
-        operatorName: formData.get("operatorName"),
-        couponCode,
-      },
-    });
-    showFlash("Coupon redeemed successfully", "success");
-    await loadDashboard();
-  } catch (error) {
-    showFlash(error.message || "Unable to redeem coupon", "danger");
   }
 }
 
