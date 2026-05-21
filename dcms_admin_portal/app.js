@@ -595,7 +595,6 @@ function redemptionsMarkup(redemptions) {
             <th>Meal</th>
             <th>Status</th>
             <th>Issued</th>
-            <th>Redeemed</th>
           </tr>
         </thead>
         <tbody>
@@ -608,7 +607,6 @@ function redemptionsMarkup(redemptions) {
                   <td>${escapeHtml(item.mealCode)}</td>
                   <td><span class="table-pill ${escapeHtml(item.status)}">${escapeHtml(item.status)}</span></td>
                   <td>${escapeHtml(formatDateTime(item.issuedAt))}</td>
-                  <td>${escapeHtml(item.redeemedAt ? formatDateTime(item.redeemedAt) : "--")}</td>
                 </tr>
               `,
             )
@@ -762,7 +760,6 @@ function serviceSnapshotMarkup(activeMeal, serverStamp, stats, mealWindows) {
         ${snapshotItemMarkup("Server time", serverStamp || "Unavailable", "Live backend time")}
         ${snapshotItemMarkup("Menus ready", String(stats.menusConfigured || 0), "Meals published today")}
         ${snapshotItemMarkup("News live", String(stats.publishedNews || 0), "Visible in the app")}
-        ${snapshotItemMarkup("Coupons redeemed", String(stats.qrRedeemedToday || 0), "Successful redemptions today")}
       </div>
     </article>
   `;
@@ -784,7 +781,7 @@ function redemptionMiniListMarkup(redemptions) {
                 <strong>${escapeHtml(item.studentId)}</strong>
                 <span>${escapeHtml(`${item.couponType} · ${item.mealCode}`)}</span>
               </div>
-              <small>${escapeHtml(item.redeemedAt ? formatRelativeTime(item.redeemedAt) : formatRelativeTime(item.issuedAt))}</small>
+              <small>${escapeHtml(formatRelativeTime(item.issuedAt))}</small>
             </div>
           `,
         )
@@ -867,8 +864,8 @@ function activityFeedMarkup(news, redemptions) {
     ...redemptions.slice(0, 3).map((item) => ({
       icon: "Q",
       tone: "qr",
-      title: `${item.studentId || "Student"} ${item.status || "updated"} ${item.couponType || "coupon"}`,
-      meta: formatRelativeTime(item.redeemedAt || item.issuedAt),
+      title: `${item.studentId || "Student"} issued ${item.couponType || "coupon"}`,
+      meta: formatRelativeTime(item.issuedAt),
     })),
   ].slice(0, 5);
 
@@ -955,7 +952,6 @@ function dashboardMarkup() {
         ${summaryKpiMarkup("Registered students", formatCompactNumber(registeredStudents), "Users linked to the DCMS app", "summary-kpi-card--students")}
         ${summaryKpiMarkup("Students served today", formatCompactNumber(activeStudentsToday), "Distinct students with coupons today", "summary-kpi-card--served")}
         ${summaryKpiMarkup("Coupons issued today", formatCompactNumber(stats.qrIssuedToday || 0), "Generated from the student app", "summary-kpi-card--issued")}
-        ${summaryKpiMarkup("Coupons redeemed today", formatCompactNumber(stats.qrRedeemedToday || 0), "Successfully redeemed at the counter", "summary-kpi-card--redeemed")}
       </section>
 
       <section class="dashboard-chart-grid">
@@ -1208,8 +1204,7 @@ function dashboardMarkup() {
             "Use this page to confirm whether the student app flow is working end to end for issuance and redemption.",
             [
               { label: "Issued", value: String(stats.qrIssuedToday || 0) },
-              { label: "Redeemed", value: String(stats.qrRedeemedToday || 0) },
-              { label: "Linked flow", value: "App coupon flow" },
+              { label: "App coupon flow", value: "App coupon flow" },
             ],
           )}
         </div>
