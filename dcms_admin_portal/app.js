@@ -1188,9 +1188,9 @@ function dashboardMarkup() {
     ${pageHeaderMarkup(
       "Audit trail",
       "Student Records",
-      "This page focuses on recent coupon history so staff can review what was issued or redeemed today.",
+      "This page focuses on recent coupon history so staff can review what was issued today.",
       "",
-      `Table updates after live admin actions and dashboard refresh.`,
+      `Table updates after dashboard refresh.`,
     )}
     <section class="module-section">
       <div class="content-grid content-grid--sidebar">
@@ -1200,8 +1200,8 @@ function dashboardMarkup() {
         <div class="page-aside">
           ${appImpactCardMarkup(
             "App coupon activity",
-            "This log reflects coupon activity generated from the student app and redeemed by admin-side validation.",
-            "Use this page to confirm whether the student app flow is working end to end for issuance and redemption.",
+            "This log reflects coupon activity generated from the student app.",
+            "Use this page to confirm whether the student app flow is working for issuance.",
             [
               { label: "Issued", value: String(stats.qrIssuedToday || 0) },
               { label: "App coupon flow", value: "App coupon flow" },
