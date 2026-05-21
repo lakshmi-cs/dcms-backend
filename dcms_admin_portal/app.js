@@ -590,7 +590,6 @@ function redemptionsMarkup(redemptions) {
       <table>
         <thead>
           <tr>
-            <th>Coupon Code</th>
             <th>Student</th>
             <th>Coupon</th>
             <th>Meal</th>
@@ -604,7 +603,6 @@ function redemptionsMarkup(redemptions) {
             .map(
               (item) => `
                 <tr>
-                  <td>${escapeHtml(item.couponCode || "--")}</td>
                   <td>${escapeHtml(item.studentId)}</td>
                   <td>${escapeHtml(item.couponType)}</td>
                   <td>${escapeHtml(item.mealCode)}</td>
