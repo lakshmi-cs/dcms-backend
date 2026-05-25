@@ -930,8 +930,7 @@ function dashboardMarkup() {
         <div>
           <p class="eyebrow">Dashboard</p>
           <h2>DCMS cafeteria management</h2>
-          <p class="panel-copy">Track student demand, meal readiness, and coupon activity in one place without extra dashboard clutter.</p>
-        </div>
+                  </div>
         <div class="overview-intro-meta">
           <span class="overview-meta-pill">${escapeHtml(content.serverDate || dashboard.serverDate || "Today")}</span>
           <span class="overview-meta-pill">${escapeHtml(activeMeal.isActive ? `${activeMeal.mealName} live` : "No live meal")}</span>
