@@ -217,7 +217,6 @@ async function api(path, options = {}) {
 
 async function checkHealth() {
   try {
-    setServerStatus(`Connecting to backend...`, "neutral");
     const data = await api("/health", { auth: false });
     const label = data.activeMeal?.isActive
       ? `${data.activeMeal.mealName} is live`
@@ -940,7 +939,6 @@ function dashboardMarkup() {
       </section>
 
       <section class="overview-kpi-grid">
-        ${summaryKpiMarkup("Registered students", formatCompactNumber(registeredStudents), "Users linked to the DCMS app", "summary-kpi-card--students")}
         ${summaryKpiMarkup("Students served today", formatCompactNumber(activeStudentsToday), "Distinct students with coupons today", "summary-kpi-card--served")}
         ${summaryKpiMarkup("Coupons issued today", formatCompactNumber(stats.qrIssuedToday || 0), "Generated from the student app", "summary-kpi-card--issued")}
       </section>
