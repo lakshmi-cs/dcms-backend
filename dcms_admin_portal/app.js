@@ -1013,7 +1013,6 @@ function dashboardMarkup() {
     ${pageHeaderMarkup(
       "Service operations",
       "Meal Hours",
-      "This page focuses only on cafeteria operating hours so staff can prepare service without extra distractions.",
       `<button type="button" class="secondary-button" id="saveScheduleButton">Save Hours</button>`,
       `Server time: ${escapeHtml(serverStamp || "Unavailable")}`,
     )}
@@ -1021,9 +1020,7 @@ function dashboardMarkup() {
       <div class="content-grid">
         ${appImpactCardMarkup(
           "Meal windows and coupon flow",
-          "These settings affect the student app coupon timing and cafeteria operations.",
-          "Students can only generate meal coupons inside active meal windows, and staff validate those tokens against the same live backend.",
-          [
+                    [
             { label: "Active meal", value: liveMealLabel },
             { label: "Meal window", value: liveMealDetail },
             { label: "App surface", value: "Home tab + coupon generation" },
