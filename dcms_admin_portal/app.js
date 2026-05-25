@@ -313,16 +313,6 @@ function loginMarkup() {
         </div>
         <form id="loginForm" class="auth-form">
           <label>
-            <span>API base URL</span>
-            <input
-              name="apiBaseUrl"
-              type="url"
-              placeholder="http://localhost:3000"
-              value="${escapeHtml(state.apiBaseUrl)}"
-              required
-            />
-          </label>
-          <label>
             <span>Admin username</span>
             <input name="username" type="text" placeholder="admin" required />
           </label>
@@ -334,7 +324,7 @@ function loginMarkup() {
             ${state.loading ? "Signing in..." : "Enter Control Room"}
           </button>
           <p class="helper-copy">
-            These credentials come from your backend <code>.env</code> file. The API base URL is saved in this browser so you can correct it without editing code again.
+            These credentials come from your backend <code>.env</code> file.
           </p>
         </form>
       </div>
@@ -1330,7 +1320,6 @@ function bindEvents() {
     loginForm.addEventListener("submit", (event) => {
       event.preventDefault();
       const formData = new FormData(loginForm);
-      setApiBaseUrl(formData.get("apiBaseUrl"));
       login(formData.get("username"), formData.get("password"));
     });
   }
