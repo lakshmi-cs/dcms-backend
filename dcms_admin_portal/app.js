@@ -996,7 +996,7 @@ function dashboardMarkup() {
       `Server time: ${escapeHtml(serverStamp || "Unavailable")}`,
     )}
     <section class="module-section">
-      <div class="content-grid">
+      <div class="content-grid content-grid--single">
         ${appImpactCardMarkup(
           "Meal windows and coupon flow",
           "These settings affect the student app coupon timing and cafeteria operations.",
