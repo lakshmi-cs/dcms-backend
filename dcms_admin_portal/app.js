@@ -142,7 +142,7 @@ function syncProfileMenu() {
   }
 
   if (profileCaret) {
-    profileCaret.textContent = state.profileMenuOpen ? "˄" : "˅";
+    profileCaret.textContent = state.profileMenuOpen ? "Ë„" : "Ë…";
   }
 
   if (profileDropdown) {
@@ -220,7 +220,7 @@ async function checkHealth() {
     const data = await api("/health", { auth: false });
     const label = data.activeMeal?.isActive
       ? `${data.activeMeal.mealName} is live`
-      : `Connected · ${data.timeZone}`;
+      : `Connected Â· ${data.timeZone}`;
     setServerStatus(label, "success");
   } catch (error) {
     setServerStatus("Backend unavailable", "danger");
@@ -474,7 +474,7 @@ function newsPreviewMarkup(news) {
             (item) => `
               <div class="app-preview-item">
                 <strong>${escapeHtml(item.title || "Announcement")}</strong>
-                <span>${escapeHtml(item.status || "published")} · ${escapeHtml(formatDateTime(item.publishAt))}</span>
+                <span>${escapeHtml(item.status || "published")} Â· ${escapeHtml(formatDateTime(item.publishAt))}</span>
               </div>
             `,
           )
@@ -769,7 +769,7 @@ function redemptionMiniListMarkup(redemptions) {
             <div class="activity-mini-item">
               <div>
                 <strong>${escapeHtml(item.studentId)}</strong>
-                <span>${escapeHtml(`${item.couponType} · ${item.mealCode}`)}</span>
+                <span>${escapeHtml(`${item.couponType} Â· ${item.mealCode}`)}</span>
               </div>
               <small>${escapeHtml(formatRelativeTime(item.issuedAt))}</small>
             </div>
@@ -905,6 +905,8 @@ function dashboardMarkup() {
   const apiBaseLabel = state.apiBaseUrl || "Not configured";
   const registeredStudents = Number(stats.registeredStudents || analytics.registeredStudents || 0);
   const activeStudentsToday = Number(stats.activeStudentsToday || analytics.activeStudentsToday || 0);
+  const economyFoodCouponsIssuedToday = Number(stats.economyFoodCouponsIssuedToday || 0);
+  const mealCouponsIssuedToday = Number(stats.mealCouponsIssuedToday || 0);
   const mealBreakdown = (analytics.mealBreakdown || mealWindows.map((window) => ({
     mealName: window.mealName,
     total: 0,
@@ -939,8 +941,8 @@ function dashboardMarkup() {
       </section>
 
       <section class="overview-kpi-grid">
-        ${summaryKpiMarkup("Students served today", formatCompactNumber(activeStudentsToday), "Distinct students with coupons today", "summary-kpi-card--served")}
-        ${summaryKpiMarkup("Coupons issued today", formatCompactNumber(stats.qrIssuedToday || 0), "Generated from the student app", "summary-kpi-card--issued")}
+        ${summaryKpiMarkup("Economy food coupon issued", formatCompactNumber(economyFoodCouponsIssuedToday), "Issued from the student app today", "summary-kpi-card--served")}
+        ${summaryKpiMarkup("Meal coupon", formatCompactNumber(mealCouponsIssuedToday), "Issued from the student app today", "summary-kpi-card--issued")}
       </section>
 
       <section class="dashboard-chart-grid">
@@ -983,29 +985,6 @@ function dashboardMarkup() {
       </section>
 
       ${workflowTimelineMarkup(activeMeal, stats)}
-
-      <section class="dashboard-chart-grid">
-        <article class="glass-card chart-card">
-          <div class="section-row compact">
-            <div>
-              <p class="eyebrow">Recent student records</p>
-              <h3>Latest coupon activity</h3>
-            </div>
-          </div>
-          <p class="panel-copy">Quick view of the most recent student coupon actions without leaving the dashboard.</p>
-          ${redemptionMiniListMarkup(redemptions)}
-        </article>
-
-        <section class="glass-card operations-panel">
-          <div class="section-row compact">
-            <div>
-              <p class="eyebrow">Admin activity</p>
-              <h3>Operations feed</h3>
-            </div>
-          </div>
-          ${activityFeedMarkup(news, redemptions)}
-        </section>
-      </section>
     </section>
   `;
   const servicePage = `
@@ -1276,7 +1255,7 @@ function dashboardMarkup() {
                   <strong>Admin</strong>
                   <span>Cafeteria session</span>
                 </div>
-                <span class="profile-caret">˅</span>
+                <span class="profile-caret">Ë…</span>
               </button>
               <div class="profile-dropdown" role="menu" aria-label="Admin menu">
                 <div class="profile-dropdown-header">
