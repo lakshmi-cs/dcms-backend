@@ -926,7 +926,7 @@ textarea {
 }
 
 .cafeteria-overview {
-  gap: 18px;
+  gap: 22px;
 }
 
 .overview-intro-card {
@@ -969,12 +969,15 @@ textarea {
 
 .overview-kpi-grid {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 14px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
 }
 
 .summary-kpi-card {
+  display: grid;
+  align-content: start;
   padding: 20px;
+  min-height: 168px;
   border-radius: 18px;
   background:
     radial-gradient(circle at top right, rgba(45, 176, 255, 0.16), transparent 30%),
@@ -1040,11 +1043,19 @@ textarea {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 16px;
+  align-items: stretch;
+}
+
+.dashboard-chart-grid--wide {
+  grid-template-columns: minmax(0, 1.35fr) minmax(280px, 0.85fr);
 }
 
 .chart-card,
 .cafeteria-snapshot-card {
+  display: grid;
+  align-content: start;
   padding: 22px;
+  min-height: 100%;
   border-radius: 18px;
   background:
     radial-gradient(circle at bottom right, rgba(45, 176, 255, 0.12), transparent 28%),
@@ -1426,6 +1437,7 @@ textarea {
 }
 
 .workflow-panel {
+  width: 100%;
   padding: 20px 20px;
   border-radius: 16px;
   background:
@@ -2137,6 +2149,10 @@ code {
   .overview-kpi-grid,
   .dashboard-chart-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .dashboard-chart-grid--wide {
+    grid-template-columns: 1fr;
   }
 
   .focus-insights-grid {
