@@ -1816,6 +1816,10 @@ textarea {
   gap: 20px;
 }
 
+.content-grid--single {
+  grid-template-columns: 1fr;
+}
+
 .content-grid--sidebar {
   grid-template-columns: minmax(0, 1.15fr) minmax(320px, 0.85fr);
 }
