@@ -500,6 +500,31 @@ function pageHeaderMarkup(eyebrow, title, description, actionsMarkup = "", detai
   `;
 }
 
+function csvEscape(value) {
+  const text = String(value ?? "");
+  return `"${text.replace(/"/g, '""')}"`;
+}
+
+function buildCsv(rows, columns) {
+  const header = columns.map((column) => csvEscape(column.label)).join(",");
+  const lines = rows.map((row) =>
+    columns.map((column) => csvEscape(column.resolve(row))).join(","),
+  );
+  return [header, ...lines].join("\r\n");
+}
+
+function triggerCsvDownload(filename, csvText) {
+  const blob = new Blob([`\uFEFF${csvText}`], { type: "text/csv;charset=utf-8;" });
+  const downloadUrl = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = downloadUrl;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  window.setTimeout(() => URL.revokeObjectURL(downloadUrl), 0);
+}
+
 function mealWindowRows(windows) {
   return windows
     .map(
@@ -1157,7 +1182,7 @@ function dashboardMarkup() {
       "Audit trail",
       "Student Records",
       "This page focuses on recent coupon history so staff can review what was issued today.",
-      "",
+      `<button type="button" class="secondary-button" id="exportStudentRecordsButton">Export CSV</button>`,
       `Table updates after dashboard refresh.`,
     )}
     <section class="module-section">
@@ -1395,6 +1420,45 @@ function bindEvents() {
   document.querySelectorAll("[data-delete-news]").forEach((button) => {
     button.addEventListener("click", () => deleteNews(button.dataset.deleteNews));
   });
+
+  const exportStudentRecordsButton = document.getElementById("exportStudentRecordsButton");
+  if (exportStudentRecordsButton) {
+    exportStudentRecordsButton.addEventListener("click", exportStudentRecordsCsv);
+  }
+}
+
+async function exportStudentRecordsCsv() {
+  const exportDate =
+    state.content?.serverDate || state.dashboard?.serverDate || new Date().toISOString().slice(0, 10);
+
+  try {
+    const redemptions = await api(
+      `/admin/redemptions?date=${encodeURIComponent(exportDate)}&limit=5000`,
+    );
+
+    if (!Array.isArray(redemptions) || !redemptions.length) {
+      showFlash("No student records found for export.", "info");
+      return;
+    }
+
+    const csvText = buildCsv(redemptions, [
+      { label: "Record ID", resolve: (row) => row.id },
+      { label: "Student ID", resolve: (row) => row.studentId },
+      { label: "Coupon Code", resolve: (row) => row.couponCode },
+      { label: "Coupon Type", resolve: (row) => row.couponType },
+      { label: "Meal Code", resolve: (row) => row.mealCode },
+      { label: "Status", resolve: (row) => row.status },
+      { label: "Issued At", resolve: (row) => formatDateTime(row.issuedAt) },
+      { label: "Expires At", resolve: (row) => formatDateTime(row.expiresAt) },
+      { label: "Redeemed At", resolve: (row) => formatDateTime(row.redeemedAt) },
+      { label: "Redeemed By", resolve: (row) => row.redeemedBy },
+    ]);
+
+    triggerCsvDownload(`student-records-${exportDate}.csv`, csvText);
+    showFlash("Student records exported as CSV for Excel.", "success");
+  } catch (error) {
+    showFlash(error.message || "Unable to export student records.", "danger");
+  }
 }
 
 async function saveSchedule() {
