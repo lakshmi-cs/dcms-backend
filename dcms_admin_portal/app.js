@@ -72,6 +72,7 @@ const state = {
   dashboard: null,
   content: null,
   activityRedemptions: [],
+  scheduleDrafts: {},
   sessionQr: null,
   validationResult: null,
   sidebarOpen: false,
@@ -739,7 +740,11 @@ function normalizeScheduleTimeInput(value) {
 function mealWindowRows(windows) {
   return windows
     .map(
-      (window) => `
+      (window) => {
+        const startDraft = state.scheduleDrafts[`${window.mealCode}_start`];
+        const endDraft = state.scheduleDrafts[`${window.mealCode}_end`];
+
+        return `
         <div class="meal-row">
           <div>
             <strong>${escapeHtml(window.mealName)}</strong>
@@ -751,7 +756,7 @@ function mealWindowRows(windows) {
               type="text"
               inputmode="numeric"
               name="${escapeHtml(window.mealCode)}_start"
-              value="${escapeHtml(formatTimeForEditor(window.startTime))}"
+              value="${escapeHtml(startDraft ?? formatTimeForEditor(window.startTime))}"
               placeholder="07:00 AM"
             />
           </label>
@@ -761,12 +766,13 @@ function mealWindowRows(windows) {
               type="text"
               inputmode="numeric"
               name="${escapeHtml(window.mealCode)}_end"
-              value="${escapeHtml(formatTimeForEditor(window.endTime))}"
+              value="${escapeHtml(endDraft ?? formatTimeForEditor(window.endTime))}"
               placeholder="10:00 PM"
             />
           </label>
         </div>
-      `,
+      `;
+      },
     )
     .join("");
 }
@@ -1639,6 +1645,15 @@ function bindEvents() {
     saveScheduleButtonInline.addEventListener("click", saveSchedule);
   }
 
+  const scheduleForm = document.getElementById("scheduleForm");
+  if (scheduleForm) {
+    scheduleForm.querySelectorAll("input").forEach((input) => {
+      input.addEventListener("input", () => {
+        state.scheduleDrafts[input.name] = input.value;
+      });
+    });
+  }
+
   const saveMenusButton = document.getElementById("saveMenusButton");
   if (saveMenusButton) {
     saveMenusButton.addEventListener("click", saveMenus);
@@ -1796,6 +1811,7 @@ async function saveSchedule() {
       method: "PUT",
       body: { mealWindows: payload },
     });
+    state.scheduleDrafts = {};
     showFlash("Meal windows updated", "success");
     await loadDashboard();
   } catch (error) {
