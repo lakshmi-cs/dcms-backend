@@ -182,10 +182,6 @@ function syncProfileMenu() {
     profileMenuButton.setAttribute("aria-expanded", state.profileMenuOpen ? "true" : "false");
   }
 
-  if (profileCaret) {
-    profileCaret.textContent = state.profileMenuOpen ? "^" : "v";
-  }
-
   if (profileDropdown) {
     profileDropdown.classList.toggle("is-open", state.profileMenuOpen);
   }
@@ -1322,7 +1318,7 @@ function dashboardMarkup() {
                   <strong>Admin</strong>
                   <span>Cafeteria session</span>
                 </div>
-                <span class="profile-caret">v</span>
+                <span class="profile-caret" aria-hidden="true"></span>
               </button>
               <div class="profile-dropdown" role="menu" aria-label="Admin menu">
                 <div class="profile-dropdown-header">
