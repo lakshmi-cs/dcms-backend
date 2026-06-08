@@ -56,7 +56,7 @@ const shellTopbar = document.querySelector(".topbar");
 const pageShell = document.querySelector(".page-shell");
 
 const WORKSPACE_SECTIONS = [
-  { key: "overview", label: "Dashboard", detail:  "terms": ["dashboard", "overview", "home", "summary"] },
+  { key: "overview", label: "Dashboard", detail: "Cafeteria overview", terms: ["dashboard", "overview", "home", "summary"] },
   { key: "service", label: "Meal Hours", detail: "Opening times", terms: ["service", "meal", "windows", "schedule", "hours", "counter"] },
   { key: "menu", label: "Daily Menu", detail: "Breakfast, lunch, and dinner", terms: ["menu", "publishing", "breakfast", "lunch", "dinner", "meals"] },
   { key: "news", label: "Notices", detail: "Student announcements", terms: ["news", "announcement", "broadcast", "draft", "published", "notice"] },
