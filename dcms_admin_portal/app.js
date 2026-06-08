@@ -2,6 +2,30 @@ const config = window.DCMS_ADMIN_CONFIG || {};
 const AUTH_STORAGE_KEY = "dcms_admin_token";
 const API_BASE_STORAGE_KEY = "dcms_admin_api_base_url";
 
+function safeStorageGet(key) {
+  try {
+    return window.localStorage.getItem(key);
+  } catch (_error) {
+    return "";
+  }
+}
+
+function safeStorageSet(key, value) {
+  try {
+    window.localStorage.setItem(key, value);
+  } catch (_error) {
+    // Ignore storage errors so the portal can still render.
+  }
+}
+
+function safeStorageRemove(key) {
+  try {
+    window.localStorage.removeItem(key);
+  } catch (_error) {
+    // Ignore storage errors so logout can still continue.
+  }
+}
+
 function normalizeApiBaseUrl(value) {
   return String(value || "").trim().replace(/\/$/, "");
 }
@@ -26,12 +50,12 @@ function resolveDefaultApiBaseUrl() {
 function getStoredApiBaseUrl() {
   const configuredUrl = normalizeApiBaseUrl(config.apiBaseUrl);
   if (configuredUrl) {
-    localStorage.setItem(API_BASE_STORAGE_KEY, configuredUrl);
+    safeStorageSet(API_BASE_STORAGE_KEY, configuredUrl);
     return configuredUrl;
   }
 
   const storedUrl = normalizeApiBaseUrl(
-    localStorage.getItem(API_BASE_STORAGE_KEY),
+    safeStorageGet(API_BASE_STORAGE_KEY),
   );
   return storedUrl || resolveDefaultApiBaseUrl();
 }
@@ -39,11 +63,11 @@ function getStoredApiBaseUrl() {
 function setApiBaseUrl(value) {
   const normalized = normalizeApiBaseUrl(value);
   state.apiBaseUrl = normalized || resolveDefaultApiBaseUrl();
-  localStorage.setItem(API_BASE_STORAGE_KEY, state.apiBaseUrl);
+  safeStorageSet(API_BASE_STORAGE_KEY, state.apiBaseUrl);
 }
 
 const state = {
-  token: localStorage.getItem(AUTH_STORAGE_KEY) || "",
+  token: safeStorageGet(AUTH_STORAGE_KEY) || "",
   apiBaseUrl: getStoredApiBaseUrl(),
   dashboard: null,
   content: null,
@@ -293,7 +317,7 @@ async function login(username, password) {
     }
 
     state.token = token;
-    localStorage.setItem(AUTH_STORAGE_KEY, state.token);
+    safeStorageSet(AUTH_STORAGE_KEY, state.token);
     showFlash("Admin session started", "success");
     await loadDashboard();
   } catch (error) {
@@ -313,7 +337,7 @@ function logout() {
   state.sidebarOpen = false;
   state.profileMenuOpen = false;
   state.loading = false;
-  localStorage.removeItem(AUTH_STORAGE_KEY);
+  safeStorageRemove(AUTH_STORAGE_KEY);
   render();
   showFlash("Logged out", "info");
 }
