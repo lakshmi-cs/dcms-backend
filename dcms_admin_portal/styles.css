@@ -1940,6 +1940,12 @@ textarea {
   min-height: 140px;
 }
 
+.panel-actions {
+  margin-top: 18px;
+  display: flex;
+  justify-content: flex-end;
+}
+
 .session-qr-controls {
   margin-bottom: 18px;
 }
