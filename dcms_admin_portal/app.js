@@ -183,7 +183,7 @@ function syncProfileMenu() {
   }
 
   if (profileCaret) {
-    profileCaret.textContent = state.profileMenuOpen ? "Ë„" : "Ë…";
+    profileCaret.textContent = state.profileMenuOpen ? "^" : "v";
   }
 
   if (profileDropdown) {
@@ -515,7 +515,7 @@ function newsPreviewMarkup(news) {
             (item) => `
               <div class="app-preview-item">
                 <strong>${escapeHtml(item.title || "Announcement")}</strong>
-                <span>${escapeHtml(item.status || "published")} Â· ${escapeHtml(formatDateTime(item.publishAt))}</span>
+                <span>${escapeHtml(item.status || "published")} - ${escapeHtml(formatDateTime(item.publishAt))}</span>
               </div>
             `,
           )
@@ -1322,7 +1322,7 @@ function dashboardMarkup() {
                   <strong>Admin</strong>
                   <span>Cafeteria session</span>
                 </div>
-                <span class="profile-caret">Ë…</span>
+                <span class="profile-caret">v</span>
               </button>
               <div class="profile-dropdown" role="menu" aria-label="Admin menu">
                 <div class="profile-dropdown-header">
