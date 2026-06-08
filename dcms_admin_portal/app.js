@@ -1183,6 +1183,9 @@ function dashboardMarkup() {
           <form id="scheduleForm" class="stacked-form">
             ${mealWindowRows(mealWindows)}
           </form>
+          <div class="panel-actions">
+            <button type="button" class="secondary-button" id="saveScheduleButtonInline">Save Hours</button>
+          </div>
         </article>
         <article class="glass-card panel-card">
           <div class="section-row">
@@ -1540,6 +1543,11 @@ function bindEvents() {
   const saveScheduleButton = document.getElementById("saveScheduleButton");
   if (saveScheduleButton) {
     saveScheduleButton.addEventListener("click", saveSchedule);
+  }
+
+  const saveScheduleButtonInline = document.getElementById("saveScheduleButtonInline");
+  if (saveScheduleButtonInline) {
+    saveScheduleButtonInline.addEventListener("click", saveSchedule);
   }
 
   const saveMenusButton = document.getElementById("saveMenusButton");
