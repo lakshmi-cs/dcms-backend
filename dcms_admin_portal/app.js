@@ -119,6 +119,10 @@ function escapeHtml(value) {
 }
 
 function parseDisplayDateTime(value) {
+  if (value instanceof Date) {
+    return Number.isNaN(value.getTime()) ? null : value;
+  }
+
   const raw = String(value || "").trim();
   if (!raw) return null;
   const normalized = raw.replace(" ", "T");
@@ -157,6 +161,10 @@ function formatDateTime(value) {
   const suffix = hours24 >= 12 ? "PM" : "AM";
 
   return `${parsed.getDate()}/${parsed.getMonth() + 1}/${parsed.getFullYear()} ${hours12}.${minutes} ${suffix}`;
+}
+
+function getComputerNow() {
+  return new Date();
 }
 
 function toDateTimeLocal(value) {
@@ -1052,8 +1060,9 @@ function dashboardMarkup() {
     ? (state.activityRedemptions || [])
     : (dashboard.recentRedemptions || []);
   const analytics = dashboard.analytics || {};
-  const rawServerStamp = `${content.serverDate || dashboard.serverDate || ""} ${content.serverTime || dashboard.serverTime || ""}`.trim();
-  const serverStamp = rawServerStamp ? formatDateTime(rawServerStamp) : "";
+  const computerNow = getComputerNow();
+  const computerStamp = formatDateTime(computerNow);
+  const computerDate = formatDateOnly(computerNow);
   const liveMealLabel = activeMeal.isActive ? activeMeal.mealName : "No active meal window";
   const liveMealDetail = activeMeal.timeLabel || "Waiting for next service window";
   const apiBaseLabel = state.apiBaseUrl || "Not configured";
@@ -1089,7 +1098,7 @@ function dashboardMarkup() {
           <p class="panel-copy">Track student demand, meal readiness, and coupon activity in one place without extra dashboard clutter.</p>
         </div>
         <div class="overview-intro-meta">
-          <span class="overview-meta-pill">${escapeHtml(content.serverDate || dashboard.serverDate ? formatDateOnly(content.serverDate || dashboard.serverDate) : "Today")}</span>
+          <span class="overview-meta-pill">${escapeHtml(computerDate)}</span>
           <span class="overview-meta-pill">${escapeHtml(activeMeal.isActive ? `${activeMeal.mealName} live` : "No live meal")}</span>
         </div>
       </section>
@@ -1100,7 +1109,7 @@ function dashboardMarkup() {
       </section>
 
       <section class="dashboard-chart-grid">
-        ${serviceSnapshotMarkup(activeMeal, serverStamp, stats, mealWindows)}
+        ${serviceSnapshotMarkup(activeMeal, computerStamp, stats, mealWindows)}
 
         <article class="glass-card chart-card">
           <div class="section-row compact">
@@ -1147,17 +1156,17 @@ function dashboardMarkup() {
       "Meal Hours",
       "This page focuses only on cafeteria operating hours so staff can prepare service without extra distractions.",
       `<button type="button" class="secondary-button" id="saveScheduleButton">Save Hours</button>`,
-      `Server time: ${escapeHtml(serverStamp || "Unavailable")}`,
+      `Computer time: ${escapeHtml(computerStamp || "Unavailable")}`,
     )}
     <section class="module-section">
       <div class="content-grid content-grid--single">
         ${appImpactCardMarkup(
           "Meal windows and coupon flow",
-          "These settings affect the student app coupon timing and cafeteria operations.",
-          "Students can only generate meal coupons inside active meal windows, and staff validate those tokens against the same live backend.",
-          [
-            { label: "Active meal", value: liveMealLabel },
-            { label: "Meal window", value: liveMealDetail },
+            "These settings affect the student app coupon timing and cafeteria operations.",
+            "Students can only generate meal coupons inside active meal windows, and staff validate those tokens against the same live backend.",
+            [
+              { label: "Active meal", value: liveMealLabel },
+              { label: "Meal window", value: liveMealDetail },
             { label: "App surface", value: "Home tab + coupon generation" },
           ],
         )}
@@ -1215,7 +1224,7 @@ function dashboardMarkup() {
             "Everything saved here appears in the student app menu tab for today's date.",
             "Students see breakfast, lunch, and dinner items directly from this backend payload after their app refreshes or reopens.",
             [
-              { label: "Date", value: content.serverDate ? formatDateOnly(content.serverDate) : "Today" },
+              { label: "Date", value: computerDate || "Today" },
               { label: "Menus ready", value: String(stats.menusConfigured || 0) },
               { label: "App tab", value: "Menu" },
             ],
@@ -1372,7 +1381,7 @@ function dashboardMarkup() {
 
         <div class="dashboard-sidebar-panel glass-card dashboard-status-card">
           ${detailItemMarkup("API base", apiBaseLabel)}
-          ${detailItemMarkup("Server time", serverStamp)}
+          ${detailItemMarkup("Computer time", computerStamp)}
           ${detailItemMarkup("Current meal", liveMealLabel)}
           ${detailItemMarkup("Meal window", liveMealDetail)}
         </div>
@@ -1406,7 +1415,7 @@ function dashboardMarkup() {
             <button class="toolbar-search-button" type="submit">Go</button>
           </form>
           <div class="toolbar-actions">
-            <span class="toolbar-status-pill">${escapeHtml(content.serverDate || dashboard.serverDate ? formatDateOnly(content.serverDate || dashboard.serverDate) : "Today")}</span>
+            <span class="toolbar-status-pill">${escapeHtml(computerDate || "Today")}</span>
             <button class="secondary-button toolbar-button" id="refreshDashboardButton" type="button">Refresh</button>
             <div class="profile-menu">
               <button class="profile-chip profile-chip-button" id="profileMenuButton" type="button" aria-haspopup="menu" aria-expanded="${state.profileMenuOpen ? "true" : "false"}">
@@ -1573,9 +1582,7 @@ function bindEvents() {
 }
 
 function getStudentRecordExportAnchorDate() {
-  const sourceDate = state.content?.serverDate || state.dashboard?.serverDate || "";
-  const parsed = parseDisplayDateTime(sourceDate);
-  return parsed || new Date();
+  return getComputerNow();
 }
 
 function filterStudentRecordsForExport(redemptions, scope) {
