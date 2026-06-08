@@ -83,9 +83,45 @@ function escapeHtml(value) {
     .replace(/'/g, "&#039;");
 }
 
+function parseDisplayDateTime(value) {
+  const raw = String(value || "").trim();
+  if (!raw) return null;
+  const normalized = raw.replace(" ", "T");
+  const parsed = new Date(normalized);
+  if (!Number.isNaN(parsed.getTime())) {
+    return parsed;
+  }
+
+  const match = /^(\d{4})-(\d{2})-(\d{2})(?:[ T](\d{2}):(\d{2})(?::(\d{2}))?)?$/.exec(raw);
+  if (!match) return null;
+
+  return new Date(
+    Number(match[1]),
+    Number(match[2]) - 1,
+    Number(match[3]),
+    Number(match[4] || 0),
+    Number(match[5] || 0),
+    Number(match[6] || 0),
+  );
+}
+
+function formatDateOnly(value) {
+  const parsed = parseDisplayDateTime(value);
+  if (!parsed) return value ? String(value) : "Not scheduled";
+  return `${parsed.getDate()}/${parsed.getMonth() + 1}/${parsed.getFullYear()}`;
+}
+
 function formatDateTime(value) {
   if (!value) return "Not scheduled";
-  return String(value).replace("T", " ").slice(0, 16);
+  const parsed = parseDisplayDateTime(value);
+  if (!parsed) return String(value).replace("T", " ").slice(0, 16);
+
+  const hours24 = parsed.getHours();
+  const hours12 = hours24 % 12 === 0 ? 12 : hours24 % 12;
+  const minutes = String(parsed.getMinutes()).padStart(2, "0");
+  const suffix = hours24 >= 12 ? "PM" : "AM";
+
+  return `${parsed.getDate()}/${parsed.getMonth() + 1}/${parsed.getFullYear()} ${hours12}.${minutes} ${suffix}`;
 }
 
 function toDateTimeLocal(value) {
@@ -929,7 +965,8 @@ function dashboardMarkup() {
   const news = content.news || [];
   const redemptions = dashboard.recentRedemptions || [];
   const analytics = dashboard.analytics || {};
-  const serverStamp = `${content.serverDate || dashboard.serverDate || ""} ${content.serverTime || dashboard.serverTime || ""}`.trim();
+  const rawServerStamp = `${content.serverDate || dashboard.serverDate || ""} ${content.serverTime || dashboard.serverTime || ""}`.trim();
+  const serverStamp = rawServerStamp ? formatDateTime(rawServerStamp) : "";
   const liveMealLabel = activeMeal.isActive ? activeMeal.mealName : "No active meal window";
   const liveMealDetail = activeMeal.timeLabel || "Waiting for next service window";
   const apiBaseLabel = state.apiBaseUrl || "Not configured";
@@ -965,7 +1002,7 @@ function dashboardMarkup() {
           <p class="panel-copy">Track student demand, meal readiness, and coupon activity in one place without extra dashboard clutter.</p>
         </div>
         <div class="overview-intro-meta">
-          <span class="overview-meta-pill">${escapeHtml(content.serverDate || dashboard.serverDate || "Today")}</span>
+          <span class="overview-meta-pill">${escapeHtml(content.serverDate || dashboard.serverDate ? formatDateOnly(content.serverDate || dashboard.serverDate) : "Today")}</span>
           <span class="overview-meta-pill">${escapeHtml(activeMeal.isActive ? `${activeMeal.mealName} live` : "No live meal")}</span>
         </div>
       </section>
@@ -1091,7 +1128,7 @@ function dashboardMarkup() {
             "Everything saved here appears in the student app menu tab for today's date.",
             "Students see breakfast, lunch, and dinner items directly from this backend payload after their app refreshes or reopens.",
             [
-              { label: "Date", value: content.serverDate || "Today" },
+              { label: "Date", value: content.serverDate ? formatDateOnly(content.serverDate) : "Today" },
               { label: "Menus ready", value: String(stats.menusConfigured || 0) },
               { label: "App tab", value: "Menu" },
             ],
@@ -1276,7 +1313,7 @@ function dashboardMarkup() {
             <button class="toolbar-search-button" type="submit">Go</button>
           </form>
           <div class="toolbar-actions">
-            <span class="toolbar-status-pill">${escapeHtml(content.serverDate || dashboard.serverDate || "Today")}</span>
+            <span class="toolbar-status-pill">${escapeHtml(content.serverDate || dashboard.serverDate ? formatDateOnly(content.serverDate || dashboard.serverDate) : "Today")}</span>
             <button class="secondary-button toolbar-button" id="refreshDashboardButton" type="button">Refresh</button>
             <div class="profile-menu">
               <button class="profile-chip profile-chip-button" id="profileMenuButton" type="button" aria-haspopup="menu" aria-expanded="${state.profileMenuOpen ? "true" : "false"}">
