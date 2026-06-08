@@ -767,14 +767,17 @@ textarea {
 }
 
 .profile-caret {
-  color: var(--muted);
-  font-size: 0.95rem;
-  line-height: 1;
+  width: 10px;
+  height: 10px;
+  display: inline-block;
+  border-right: 2px solid var(--muted);
+  border-bottom: 2px solid var(--muted);
+  transform: rotate(45deg) translateY(-1px);
   transition: transform 180ms ease;
 }
 
 .profile-menu.is-open .profile-caret {
-  transform: rotate(180deg);
+  transform: rotate(-135deg) translateY(-1px);
 }
 
 .profile-dropdown {
