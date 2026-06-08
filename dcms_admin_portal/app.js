@@ -24,7 +24,15 @@ function resolveDefaultApiBaseUrl() {
 }
 
 function getStoredApiBaseUrl() {
-  const storedUrl = normalizeApiBaseUrl(localStorage.getItem(API_BASE_STORAGE_KEY));
+  const configuredUrl = normalizeApiBaseUrl(config.apiBaseUrl);
+  if (configuredUrl) {
+    localStorage.setItem(API_BASE_STORAGE_KEY, configuredUrl);
+    return configuredUrl;
+  }
+
+  const storedUrl = normalizeApiBaseUrl(
+    localStorage.getItem(API_BASE_STORAGE_KEY),
+  );
   return storedUrl || resolveDefaultApiBaseUrl();
 }
 
@@ -850,7 +858,8 @@ function serviceSnapshotMarkup(activeMeal, serverStamp, stats, mealWindows) {
             ? `${activeMeal.timeLabel} is active, so students can generate and redeem valid coupons right now.`
             : nextWindow
               ? `Next window is ${nextWindow.mealName} (${nextWindow.timeLabel}). Staff can prepare the counter QR and menu before service starts.`
-                     )}
+              : "No cafeteria window is active yet. Keep meal hours and menu ready before the next session begins.",
+        )}
       </p>
       <div class="snapshot-grid">
         ${snapshotItemMarkup("Server time", serverStamp || "Unavailable", "Live backend time")}
