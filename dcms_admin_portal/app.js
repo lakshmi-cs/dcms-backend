@@ -667,6 +667,75 @@ function triggerCsvDownload(filename, csvText) {
   window.setTimeout(() => URL.revokeObjectURL(downloadUrl), 0);
 }
 
+function formatTimeForEditor(value) {
+  const raw = String(value || "").trim();
+  if (!raw) return "";
+
+  const [hoursText = "0", minutesText = "0"] = raw.split(":");
+  const hours = Number(hoursText);
+  const minutes = Number(minutesText);
+
+  if (Number.isNaN(hours) || Number.isNaN(minutes)) {
+    return raw;
+  }
+
+  const suffix = hours >= 12 ? "PM" : "AM";
+  const twelveHour = hours % 12 === 0 ? 12 : hours % 12;
+  return `${String(twelveHour).padStart(2, "0")}:${String(minutes).padStart(2, "0")} ${suffix}`;
+}
+
+function normalizeScheduleTimeInput(value) {
+  const raw = String(value || "").trim().toUpperCase();
+  if (!raw) return null;
+
+  const twelveHourMatch = /^(\d{1,2}):(\d{2})\s*(AM|PM)$/.exec(raw);
+  if (twelveHourMatch) {
+    let hours = Number(twelveHourMatch[1]);
+    const minutes = Number(twelveHourMatch[2]);
+    const suffix = twelveHourMatch[3];
+
+    if (
+      Number.isNaN(hours) ||
+      Number.isNaN(minutes) ||
+      hours < 1 ||
+      hours > 12 ||
+      minutes < 0 ||
+      minutes > 59
+    ) {
+      return null;
+    }
+
+    if (suffix === "AM") {
+      hours = hours === 12 ? 0 : hours;
+    } else {
+      hours = hours === 12 ? 12 : hours + 12;
+    }
+
+    return `${String(hours).padStart(2, "0")}:${String(minutes).padStart(2, "0")}:00`;
+  }
+
+  const twentyFourHourMatch = /^(\d{1,2}):(\d{2})$/.exec(raw);
+  if (twentyFourHourMatch) {
+    const hours = Number(twentyFourHourMatch[1]);
+    const minutes = Number(twentyFourHourMatch[2]);
+
+    if (
+      Number.isNaN(hours) ||
+      Number.isNaN(minutes) ||
+      hours < 0 ||
+      hours > 23 ||
+      minutes < 0 ||
+      minutes > 59
+    ) {
+      return null;
+    }
+
+    return `${String(hours).padStart(2, "0")}:${String(minutes).padStart(2, "0")}:00`;
+  }
+
+  return null;
+}
+
 function mealWindowRows(windows) {
   return windows
     .map(
@@ -678,11 +747,23 @@ function mealWindowRows(windows) {
           </div>
           <label>
             <span>Start</span>
-            <input type="time" name="${escapeHtml(window.mealCode)}_start" value="${escapeHtml(String(window.startTime).slice(0, 5))}" />
+            <input
+              type="text"
+              inputmode="numeric"
+              name="${escapeHtml(window.mealCode)}_start"
+              value="${escapeHtml(formatTimeForEditor(window.startTime))}"
+              placeholder="07:00 AM"
+            />
           </label>
           <label>
             <span>End</span>
-            <input type="time" name="${escapeHtml(window.mealCode)}_end" value="${escapeHtml(String(window.endTime).slice(0, 5))}" />
+            <input
+              type="text"
+              inputmode="numeric"
+              name="${escapeHtml(window.mealCode)}_end"
+              value="${escapeHtml(formatTimeForEditor(window.endTime))}"
+              placeholder="10:00 PM"
+            />
           </label>
         </div>
       `,
@@ -1683,13 +1764,32 @@ async function saveSchedule() {
   const form = document.getElementById("scheduleForm");
   if (!form) return;
 
-  const payload = mealWindows.map((window, index) => ({
-    mealCode: window.mealCode,
-    mealName: window.mealName,
-    startTime: `${form.elements[`${window.mealCode}_start`].value}:00`,
-    endTime: `${form.elements[`${window.mealCode}_end`].value}:00`,
-    sortOrder: index + 1,
-  }));
+  const payload = [];
+
+  for (const [index, window] of mealWindows.entries()) {
+    const startTime = normalizeScheduleTimeInput(
+      form.elements[`${window.mealCode}_start`].value,
+    );
+    const endTime = normalizeScheduleTimeInput(
+      form.elements[`${window.mealCode}_end`].value,
+    );
+
+    if (!startTime || !endTime) {
+      showFlash(
+        `Use a valid time for ${window.mealName}. Example: 07:00 AM or 19:00`,
+        "danger",
+      );
+      return;
+    }
+
+    payload.push({
+      mealCode: window.mealCode,
+      mealName: window.mealName,
+      startTime,
+      endTime,
+      sortOrder: index + 1,
+    });
+  }
 
   try {
     await api("/admin/meal-windows", {
