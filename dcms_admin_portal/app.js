@@ -47,6 +47,8 @@ const state = {
   serverStatusMessage: "Backend connection pending",
   serverStatusTone: "neutral",
   loading: false,
+  autoRefreshHandle: null,
+  backgroundLoadInFlight: false,
 };
 
 const appRoot = document.getElementById("appRoot");
@@ -206,6 +208,7 @@ function handleDocumentClick(event) {
 async function api(path, options = {}) {
   const request = {
     method: options.method || "GET",
+    cache: "no-store",
     headers: {
       "Content-Type": "application/json",
       ...(options.headers || {}),
@@ -293,6 +296,7 @@ async function login(username, password) {
 }
 
 function logout() {
+  stopDashboardAutoRefresh();
   state.token = "";
   state.dashboard = null;
   state.content = null;
@@ -306,9 +310,35 @@ function logout() {
   showFlash("Logged out", "info");
 }
 
-async function loadDashboard() {
-  state.loading = true;
-  render();
+function stopDashboardAutoRefresh() {
+  if (state.autoRefreshHandle) {
+    window.clearInterval(state.autoRefreshHandle);
+    state.autoRefreshHandle = null;
+  }
+}
+
+function startDashboardAutoRefresh() {
+  stopDashboardAutoRefresh();
+  if (!state.token) return;
+
+  state.autoRefreshHandle = window.setInterval(() => {
+    if (document.hidden || !state.token || state.backgroundLoadInFlight) {
+      return;
+    }
+    loadDashboard({ isBackgroundRefresh: true });
+  }, 5000);
+}
+
+async function loadDashboard(options = {}) {
+  const isBackgroundRefresh = Boolean(options.isBackgroundRefresh);
+
+  if (isBackgroundRefresh) {
+    if (state.backgroundLoadInFlight) return;
+    state.backgroundLoadInFlight = true;
+  } else {
+    state.loading = true;
+    render();
+  }
 
   try {
     const [dashboard, content] = await Promise.all([
@@ -318,17 +348,32 @@ async function loadDashboard() {
 
     state.dashboard = dashboard;
     state.content = content;
-    state.loading = false;
-    render();
+    if (!isBackgroundRefresh) {
+      state.loading = false;
+      render();
+    } else {
+      render();
+    }
+    startDashboardAutoRefresh();
   } catch (error) {
-    state.loading = false;
+    if (!isBackgroundRefresh) {
+      state.loading = false;
+    }
     if (error.status === 401) {
       logout();
-      showFlash("Your admin session expired. Please log in again.", "danger");
+      if (!isBackgroundRefresh) {
+        showFlash("Your admin session expired. Please log in again.", "danger");
+      }
       return;
     }
-    render();
-    showFlash(error.message || "Unable to load dashboard", "danger");
+    if (!isBackgroundRefresh) {
+      render();
+      showFlash(error.message || "Unable to load dashboard", "danger");
+    }
+  } finally {
+    if (isBackgroundRefresh) {
+      state.backgroundLoadInFlight = false;
+    }
   }
 }
 
