@@ -71,6 +71,7 @@ const state = {
   apiBaseUrl: getStoredApiBaseUrl(),
   dashboard: null,
   content: null,
+  activityRedemptions: [],
   sessionQr: null,
   validationResult: null,
   sidebarOpen: false,
@@ -373,13 +374,24 @@ async function loadDashboard(options = {}) {
   }
 
   try {
-    const [dashboard, content] = await Promise.all([
+    const requests = [
       api("/admin/dashboard"),
       api("/admin/content"),
-    ]);
+    ];
+
+    if (state.currentPage === "activity") {
+      requests.push(api("/admin/redemptions?limit=5000"));
+    }
+
+    const [dashboard, content, activityRedemptions] = await Promise.all(requests);
 
     state.dashboard = dashboard;
     state.content = content;
+    if (state.currentPage === "activity") {
+      state.activityRedemptions = Array.isArray(activityRedemptions)
+        ? activityRedemptions
+        : [];
+    }
     if (!isBackgroundRefresh) {
       state.loading = false;
       render();
@@ -1036,7 +1048,9 @@ function dashboardMarkup() {
   const menus = content.menus || [];
   const mealWindows = content.mealWindows || [];
   const news = content.news || [];
-  const redemptions = dashboard.recentRedemptions || [];
+  const redemptions = state.currentPage === "activity"
+    ? (state.activityRedemptions || [])
+    : (dashboard.recentRedemptions || []);
   const analytics = dashboard.analytics || {};
   const rawServerStamp = `${content.serverDate || dashboard.serverDate || ""} ${content.serverTime || dashboard.serverTime || ""}`.trim();
   const serverStamp = rawServerStamp ? formatDateTime(rawServerStamp) : "";
@@ -1296,9 +1310,9 @@ function dashboardMarkup() {
     ${pageHeaderMarkup(
       "Audit trail",
       "Student Records",
-      "This page focuses on recent coupon history so staff can review what was issued today.",
+      "This page keeps the full coupon history so staff can review, retain, and export student records over time.",
       `<button type="button" class="secondary-button" id="exportStudentRecordsButton">Export CSV</button>`,
-      `Table updates after dashboard refresh.`,
+      `Stored records stay available for review and CSV export.`,
     )}
     <section class="module-section">
       <div class="content-grid content-grid--sidebar">
@@ -1543,13 +1557,8 @@ function bindEvents() {
 }
 
 async function exportStudentRecordsCsv() {
-  const exportDate =
-    state.content?.serverDate || state.dashboard?.serverDate || new Date().toISOString().slice(0, 10);
-
   try {
-    const redemptions = await api(
-      `/admin/redemptions?date=${encodeURIComponent(exportDate)}&limit=5000`,
-    );
+    const redemptions = await api("/admin/redemptions?limit=5000");
 
     if (!Array.isArray(redemptions) || !redemptions.length) {
       showFlash("No student records found for export.", "info");
@@ -1569,7 +1578,7 @@ async function exportStudentRecordsCsv() {
       { label: "Redeemed By", resolve: (row) => row.redeemedBy },
     ]);
 
-    triggerCsvDownload(`student-records-${exportDate}.csv`, csvText);
+    triggerCsvDownload("student-records-history.csv", csvText);
     showFlash("Student records exported as CSV for Excel.", "success");
   } catch (error) {
     showFlash(error.message || "Unable to export student records.", "danger");
