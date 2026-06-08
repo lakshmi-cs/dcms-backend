@@ -363,7 +363,15 @@ function startDashboardAutoRefresh() {
   if (!state.token) return;
 
   state.autoRefreshHandle = window.setInterval(() => {
-    if (document.hidden || !state.token || state.backgroundLoadInFlight) {
+    const currentPageKey = getCurrentPageKey();
+    const autoRefreshEnabledPages = new Set(["overview", "activity"]);
+
+    if (
+      document.hidden ||
+      !state.token ||
+      state.backgroundLoadInFlight ||
+      !autoRefreshEnabledPages.has(currentPageKey)
+    ) {
       return;
     }
     loadDashboard({ isBackgroundRefresh: true });
