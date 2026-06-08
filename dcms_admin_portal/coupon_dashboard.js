@@ -52,9 +52,38 @@ function setServerStatus(message, tone = "neutral") {
   serverStatus.dataset.tone = tone;
 }
 
+function parseDisplayDateTime(value) {
+  const raw = String(value || "").trim();
+  if (!raw) return null;
+  const parsed = new Date(raw.replace(" ", "T"));
+  if (!Number.isNaN(parsed.getTime())) {
+    return parsed;
+  }
+
+  const match = /^(\d{4})-(\d{2})-(\d{2})(?:[ T](\d{2}):(\d{2})(?::(\d{2}))?)?$/.exec(raw);
+  if (!match) return null;
+
+  return new Date(
+    Number(match[1]),
+    Number(match[2]) - 1,
+    Number(match[3]),
+    Number(match[4] || 0),
+    Number(match[5] || 0),
+    Number(match[6] || 0),
+  );
+}
+
 function formatDateTime(value) {
   if (!value) return "--";
-  return String(value).replace("T", " ").slice(0, 19);
+  const parsed = parseDisplayDateTime(value);
+  if (!parsed) return String(value).replace("T", " ").slice(0, 19);
+
+  const hours24 = parsed.getHours();
+  const hours12 = hours24 % 12 === 0 ? 12 : hours24 % 12;
+  const minutes = String(parsed.getMinutes()).padStart(2, "0");
+  const suffix = hours24 >= 12 ? "PM" : "AM";
+
+  return `${parsed.getDate()}/${parsed.getMonth() + 1}/${parsed.getFullYear()} ${hours12}.${minutes} ${suffix}`;
 }
 
 function statCardMarkup(label, value, detail) {
@@ -123,6 +152,16 @@ function renderAnalytics() {
   );
 }
 
+function getEffectiveStatus(coupon) {
+  if (coupon.status === "ACTIVE") {
+    const expiresAt = new Date(coupon.expiresAt);
+    if (expiresAt < new Date()) {
+      return "EXPIRED";
+    }
+  }
+  return coupon.status;
+}
+
 function renderCoupons() {
   if (!state.coupons.length) {
     couponTableShell.innerHTML = `<div class="empty-card">No coupons matched the current filter.</div>`;
@@ -144,27 +183,28 @@ function renderCoupons() {
       </thead>
       <tbody>
         ${state.coupons
-          .map(
-            (coupon) => `
+          .map((coupon) => {
+            const status = getEffectiveStatus(coupon);
+            return `
               <tr>
                 <td>${coupon.couponCode}</td>
                 <td>${coupon.studentId}</td>
                 <td>${coupon.foodName}</td>
-                <td><span class="coupon-status-pill ${coupon.status}">${coupon.status}</span></td>
+                <td><span class="coupon-status-pill ${status}">${status}</span></td>
                 <td>${formatDateTime(coupon.createdAt)}</td>
                 <td>${formatDateTime(coupon.expiresAt)}</td>
                 <td>
                   <div class="coupon-table-actions">
                     ${
-                      coupon.status === "ACTIVE"
+                      status === "ACTIVE"
                         ? `<button class="primary-button redeem-button" data-code="${coupon.couponCode}" type="button">Redeem</button>`
                         : `<span class="helper-copy">Locked</span>`
                     }
                   </div>
                 </td>
               </tr>
-            `,
-          )
+            `;
+          })
           .join("")}
       </tbody>
     </table>
@@ -181,7 +221,7 @@ function renderCoupons() {
 async function loadHealth() {
   try {
     const result = await api("/health");
-    setServerStatus(`Connected · ${formatDateTime(result.timestamp)}`, "success");
+    setServerStatus(`Connected Â· ${formatDateTime(result.timestamp)}`, "success");
   } catch (error) {
     setServerStatus("Backend unavailable", "danger");
   }
