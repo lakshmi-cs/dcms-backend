@@ -1311,7 +1311,13 @@ function dashboardMarkup() {
       "Audit trail",
       "Student Records",
       "This page keeps the full coupon history so staff can review, retain, and export student records over time.",
-      `<button type="button" class="secondary-button" id="exportStudentRecordsButton">Export CSV</button>`,
+      `
+        <div class="section-row compact">
+          <button type="button" class="secondary-button" id="exportStudentRecordsWeeklyButton">Weekly CSV</button>
+          <button type="button" class="secondary-button" id="exportStudentRecordsMonthlyButton">Monthly CSV</button>
+          <button type="button" class="secondary-button" id="exportStudentRecordsButton">Full CSV</button>
+        </div>
+      `,
       `Stored records stay available for review and CSV export.`,
     )}
     <section class="module-section">
@@ -1552,20 +1558,72 @@ function bindEvents() {
 
   const exportStudentRecordsButton = document.getElementById("exportStudentRecordsButton");
   if (exportStudentRecordsButton) {
-    exportStudentRecordsButton.addEventListener("click", exportStudentRecordsCsv);
+    exportStudentRecordsButton.addEventListener("click", () => exportStudentRecordsCsv("full"));
+  }
+
+  const exportStudentRecordsWeeklyButton = document.getElementById("exportStudentRecordsWeeklyButton");
+  if (exportStudentRecordsWeeklyButton) {
+    exportStudentRecordsWeeklyButton.addEventListener("click", () => exportStudentRecordsCsv("weekly"));
+  }
+
+  const exportStudentRecordsMonthlyButton = document.getElementById("exportStudentRecordsMonthlyButton");
+  if (exportStudentRecordsMonthlyButton) {
+    exportStudentRecordsMonthlyButton.addEventListener("click", () => exportStudentRecordsCsv("monthly"));
   }
 }
 
-async function exportStudentRecordsCsv() {
+function getStudentRecordExportAnchorDate() {
+  const sourceDate = state.content?.serverDate || state.dashboard?.serverDate || "";
+  const parsed = parseDisplayDateTime(sourceDate);
+  return parsed || new Date();
+}
+
+function filterStudentRecordsForExport(redemptions, scope) {
+  if (scope === "full") {
+    return redemptions;
+  }
+
+  const anchorDate = getStudentRecordExportAnchorDate();
+
+  if (scope === "monthly") {
+    const month = anchorDate.getMonth();
+    const year = anchorDate.getFullYear();
+    return redemptions.filter((row) => {
+      const issuedAt = parseDisplayDateTime(row.issuedAt);
+      return issuedAt &&
+        issuedAt.getMonth() === month &&
+        issuedAt.getFullYear() === year;
+    });
+  }
+
+  if (scope === "weekly") {
+    const weekStart = new Date(anchorDate);
+    weekStart.setHours(0, 0, 0, 0);
+    weekStart.setDate(anchorDate.getDate() - 6);
+
+    const weekEnd = new Date(anchorDate);
+    weekEnd.setHours(23, 59, 59, 999);
+
+    return redemptions.filter((row) => {
+      const issuedAt = parseDisplayDateTime(row.issuedAt);
+      return issuedAt && issuedAt >= weekStart && issuedAt <= weekEnd;
+    });
+  }
+
+  return redemptions;
+}
+
+async function exportStudentRecordsCsv(scope = "full") {
   try {
     const redemptions = await api("/admin/redemptions?limit=5000");
+    const filteredRedemptions = filterStudentRecordsForExport(redemptions, scope);
 
-    if (!Array.isArray(redemptions) || !redemptions.length) {
+    if (!Array.isArray(filteredRedemptions) || !filteredRedemptions.length) {
       showFlash("No student records found for export.", "info");
       return;
     }
 
-    const csvText = buildCsv(redemptions, [
+    const csvText = buildCsv(filteredRedemptions, [
       { label: "Record ID", resolve: (row) => row.id },
       { label: "Student ID", resolve: (row) => row.studentId },
       { label: "Coupon Code", resolve: (row) => row.couponCode },
@@ -1578,8 +1636,20 @@ async function exportStudentRecordsCsv() {
       { label: "Redeemed By", resolve: (row) => row.redeemedBy },
     ]);
 
-    triggerCsvDownload("student-records-history.csv", csvText);
-    showFlash("Student records exported as CSV for Excel.", "success");
+    const fileNames = {
+      full: "student-records-history.csv",
+      weekly: "student-records-weekly.csv",
+      monthly: "student-records-monthly.csv",
+    };
+
+    const successMessages = {
+      full: "Full student records exported as CSV for Excel.",
+      weekly: "Weekly student records exported as CSV for Excel.",
+      monthly: "Monthly student records exported as CSV for Excel.",
+    };
+
+    triggerCsvDownload(fileNames[scope] || fileNames.full, csvText);
+    showFlash(successMessages[scope] || successMessages.full, "success");
   } catch (error) {
     showFlash(error.message || "Unable to export student records.", "danger");
   }
