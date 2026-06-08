@@ -549,7 +549,8 @@ textarea {
     linear-gradient(180deg, rgba(11, 14, 39, 0.98), rgba(12, 16, 44, 0.96));
   box-shadow: 0 18px 40px rgba(9, 11, 38, 0.42);
   overflow: visible;
-  position: relative;
+  position: sticky;
+  top: 16px;
   z-index: 25;
 }
 
