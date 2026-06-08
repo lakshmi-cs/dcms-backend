@@ -93,6 +93,11 @@ function toDateTimeLocal(value) {
   return String(value).replace(" ", "T").slice(0, 16);
 }
 
+function toDateOnly(value) {
+  if (!value) return "";
+  return String(value).replace("T", " ").slice(0, 10);
+}
+
 function setServerStatus(message, tone = "neutral") {
   state.serverStatusMessage = message;
   state.serverStatusTone = tone;
@@ -1145,12 +1150,12 @@ function dashboardMarkup() {
             </div>
             <div class="dual-field-grid">
               <label>
-                <span>Publish time</span>
-                <input type="datetime-local" name="publishAt" />
+                <span>Publish date</span>
+                <input type="date" name="publishAt" />
               </label>
               <label>
-                <span>Expire time</span>
-                <input type="datetime-local" name="expiresAt" />
+                <span>Expire date</span>
+                <input type="date" name="expiresAt" />
               </label>
             </div>
             <label>
@@ -1528,8 +1533,8 @@ function editNews(newsId) {
   form.elements.category.value = item.category || "General";
   form.elements.status.value = item.status || "published";
   form.elements.priority.value = item.priority || 0;
-  form.elements.publishAt.value = toDateTimeLocal(item.publishAt);
-  form.elements.expiresAt.value = toDateTimeLocal(item.expiresAt);
+  form.elements.publishAt.value = toDateOnly(item.publishAt);
+  form.elements.expiresAt.value = toDateOnly(item.expiresAt);
   form.elements.body.value = item.body || "";
   showFlash("Editing news post", "info");
   form.scrollIntoView({ behavior: "smooth", block: "center" });
@@ -1545,8 +1550,12 @@ async function saveNews(event) {
     category: formData.get("category"),
     status: formData.get("status"),
     priority: Number(formData.get("priority") || 0),
-    publishAt: formData.get("publishAt") ? String(formData.get("publishAt")).replace("T", " ") + ":00" : null,
-    expiresAt: formData.get("expiresAt") ? String(formData.get("expiresAt")).replace("T", " ") + ":00" : null,
+    publishAt: formData.get("publishAt")
+      ? `${String(formData.get("publishAt"))} 00:00:00`
+      : null,
+    expiresAt: formData.get("expiresAt")
+      ? `${String(formData.get("expiresAt"))} 23:59:59`
+      : null,
   };
 
   try {
