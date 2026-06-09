@@ -311,6 +311,7 @@ async function checkHealth() {
 
 async function login(username, password) {
   state.loading = true;
+  setServerStatus("Connecting to backend...", "neutral");
   render();
 
   try {
@@ -328,6 +329,7 @@ async function login(username, password) {
 
     state.token = token;
     safeStorageSet(AUTH_STORAGE_KEY, state.token);
+    setServerStatus("Connected Â· Signing in", "success");
     showFlash("Admin session started", "success");
     await loadDashboard();
   } catch (error) {
@@ -404,6 +406,12 @@ async function loadDashboard(options = {}) {
 
     state.dashboard = dashboard;
     state.content = content;
+    setServerStatus(
+      dashboard?.activeMeal?.isActive
+        ? `${dashboard.activeMeal.mealName} is live`
+        : `Connected Â· ${content?.timeZone || dashboard?.timeZone || "Backend ready"}`,
+      "success",
+    );
     if (state.currentPage === "activity") {
       state.activityRedemptions = Array.isArray(activityRedemptions)
         ? activityRedemptions
@@ -428,6 +436,7 @@ async function loadDashboard(options = {}) {
       return;
     }
     if (!isBackgroundRefresh) {
+      setServerStatus("Backend unavailable", "danger");
       render();
       showFlash(error.message || "Unable to load dashboard", "danger");
     }
