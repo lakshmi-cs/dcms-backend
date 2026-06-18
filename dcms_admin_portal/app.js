@@ -1209,7 +1209,7 @@ function dashboardMarkup() {
 
       <section class="overview-kpi-grid">
         ${summaryKpiMarkup("Economy food coupon issued", formatCompactNumber(economyFoodCouponsIssuedToday), "Issued from the student app records", "summary-kpi-card--served")}
-        ${summaryKpiMarkup("Meal coupon", formatCompactNumber(mealCouponsIssuedToday), "Issued from the student app records", "summary-kpi-card--issued")}
+        ${summaryKpiMarkup("Meal coupon issued", formatCompactNumber(mealCouponsIssuedToday), "Issued from the student app records", "summary-kpi-card--issued")}
       </section>
 
       <section class="dashboard-chart-grid">
