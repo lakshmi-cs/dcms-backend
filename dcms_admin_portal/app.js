@@ -396,27 +396,22 @@ async function loadDashboard(options = {}) {
     const requests = [
       api("/admin/dashboard"),
       api("/admin/content"),
+      api("/admin/redemptions?limit=5000"),
     ];
-
-    if (state.currentPage === "activity") {
-      requests.push(api("/admin/redemptions?limit=5000"));
-    }
 
     const [dashboard, content, activityRedemptions] = await Promise.all(requests);
 
     state.dashboard = dashboard;
     state.content = content;
+    state.activityRedemptions = Array.isArray(activityRedemptions)
+      ? activityRedemptions
+      : [];
     setServerStatus(
       dashboard?.activeMeal?.isActive
         ? `${dashboard.activeMeal.mealName} is live`
         : `Connected Â· ${content?.timeZone || dashboard?.timeZone || "Backend ready"}`,
       "success",
     );
-    if (state.currentPage === "activity") {
-      state.activityRedemptions = Array.isArray(activityRedemptions)
-        ? activityRedemptions
-        : [];
-    }
     if (!isBackgroundRefresh) {
       state.loading = false;
       render();
@@ -1143,6 +1138,13 @@ function activityFeedMarkup(news, redemptions) {
   `;
 }
 
+function normalizeRecordCouponType(value) {
+  const normalized = String(value || "").trim().toLowerCase();
+  if (normalized === "economy") return "economy";
+  if (normalized === "coupon") return "coupon";
+  return normalized;
+}
+
 function dashboardMarkup() {
   if (state.loading && (!state.dashboard || !state.content)) {
     return `
@@ -1172,8 +1174,13 @@ function dashboardMarkup() {
   const apiBaseLabel = state.apiBaseUrl || "Not configured";
   const registeredStudents = Number(stats.registeredStudents || analytics.registeredStudents || 0);
   const activeStudentsToday = Number(stats.activeStudentsToday || analytics.activeStudentsToday || 0);
-  const economyFoodCouponsIssuedToday = Number(stats.economyFoodCouponsIssuedToday || 0);
-  const mealCouponsIssuedToday = Number(stats.mealCouponsIssuedToday || 0);
+  const fullRedemptionHistory = state.activityRedemptions || [];
+  const economyFoodCouponsIssuedToday = fullRedemptionHistory.filter(
+    (item) => normalizeRecordCouponType(item.couponType) === "economy",
+  ).length;
+  const mealCouponsIssuedToday = fullRedemptionHistory.filter(
+    (item) => normalizeRecordCouponType(item.couponType) === "coupon",
+  ).length;
   const mealBreakdown = (analytics.mealBreakdown || mealWindows.map((window) => ({
     mealName: window.mealName,
     total: 0,
@@ -1209,7 +1216,7 @@ function dashboardMarkup() {
 
       <section class="overview-kpi-grid">
         ${summaryKpiMarkup("Economy food coupon issued", formatCompactNumber(economyFoodCouponsIssuedToday), "Issued from the student app records", "summary-kpi-card--served")}
-        ${summaryKpiMarkup("Meal coupon issued", formatCompactNumber(mealCouponsIssuedToday), "Issued from the student app records", "summary-kpi-card--issued")}
+        ${summaryKpiMarkup("Meal coupon", formatCompactNumber(mealCouponsIssuedToday), "Issued from the student app records", "summary-kpi-card--issued")}
       </section>
 
       <section class="dashboard-chart-grid">
