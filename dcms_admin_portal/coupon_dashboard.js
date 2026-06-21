@@ -1,5 +1,9 @@
 const config = window.DCMS_ADMIN_CONFIG || {};
 const API_BASE_STORAGE_KEY = "dcms_coupon_api_base_url";
+const {
+  parseMalaysiaDateTime,
+  formatMalaysiaDateTime,
+} = window.DCMSTime;
 
 const state = {
   apiBaseUrl: normalizeApiBaseUrl(localStorage.getItem(API_BASE_STORAGE_KEY) || config.apiBaseUrl || "http://localhost:3000"),
@@ -53,37 +57,11 @@ function setServerStatus(message, tone = "neutral") {
 }
 
 function parseDisplayDateTime(value) {
-  const raw = String(value || "").trim();
-  if (!raw) return null;
-  const parsed = new Date(raw.replace(" ", "T"));
-  if (!Number.isNaN(parsed.getTime())) {
-    return parsed;
-  }
-
-  const match = /^(\d{4})-(\d{2})-(\d{2})(?:[ T](\d{2}):(\d{2})(?::(\d{2}))?)?$/.exec(raw);
-  if (!match) return null;
-
-  return new Date(
-    Number(match[1]),
-    Number(match[2]) - 1,
-    Number(match[3]),
-    Number(match[4] || 0),
-    Number(match[5] || 0),
-    Number(match[6] || 0),
-  );
+  return parseMalaysiaDateTime(value);
 }
 
 function formatDateTime(value) {
-  if (!value) return "--";
-  const parsed = parseDisplayDateTime(value);
-  if (!parsed) return String(value).replace("T", " ").slice(0, 19);
-
-  const hours24 = parsed.getHours();
-  const hours12 = hours24 % 12 === 0 ? 12 : hours24 % 12;
-  const minutes = String(parsed.getMinutes()).padStart(2, "0");
-  const suffix = hours24 >= 12 ? "PM" : "AM";
-
-  return `${parsed.getDate()}/${parsed.getMonth() + 1}/${parsed.getFullYear()} ${hours12}.${minutes} ${suffix}`;
+  return formatMalaysiaDateTime(value, { emptyLabel: "--" });
 }
 
 function statCardMarkup(label, value, detail) {
@@ -154,8 +132,8 @@ function renderAnalytics() {
 
 function getEffectiveStatus(coupon) {
   if (coupon.status === "ACTIVE") {
-    const expiresAt = new Date(coupon.expiresAt);
-    if (expiresAt < new Date()) {
+    const expiresAt = parseDisplayDateTime(coupon.expiresAt);
+    if (expiresAt && expiresAt < new Date()) {
       return "EXPIRED";
     }
   }
