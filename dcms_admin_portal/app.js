@@ -1,6 +1,14 @@
 const config = window.DCMS_ADMIN_CONFIG || {};
 const AUTH_STORAGE_KEY = "dcms_admin_token";
 const API_BASE_STORAGE_KEY = "dcms_admin_api_base_url";
+const {
+  parseMalaysiaDateTime,
+  formatMalaysiaDateTime,
+  formatMalaysiaDateOnly,
+  formatMalaysiaRelativeTime,
+  formatMalaysiaShortDay,
+  toMalaysiaDateInputValue,
+} = window.DCMSTime;
 
 function safeStorageGet(key) {
   try {
@@ -120,48 +128,15 @@ function escapeHtml(value) {
 }
 
 function parseDisplayDateTime(value) {
-  if (value instanceof Date) {
-    return Number.isNaN(value.getTime()) ? null : value;
-  }
-
-  const raw = String(value || "").trim();
-  if (!raw) return null;
-  const normalized = raw.replace(" ", "T");
-  const parsed = new Date(normalized);
-  if (!Number.isNaN(parsed.getTime())) {
-    return parsed;
-  }
-
-  const match = /^(\d{4})-(\d{2})-(\d{2})(?:[ T](\d{2}):(\d{2})(?::(\d{2}))?)?$/.exec(raw);
-  if (!match) return null;
-
-  return new Date(
-    Number(match[1]),
-    Number(match[2]) - 1,
-    Number(match[3]),
-    Number(match[4] || 0),
-    Number(match[5] || 0),
-    Number(match[6] || 0),
-  );
+  return parseMalaysiaDateTime(value);
 }
 
 function formatDateOnly(value) {
-  const parsed = parseDisplayDateTime(value);
-  if (!parsed) return value ? String(value) : "Not scheduled";
-  return `${parsed.getDate()}/${parsed.getMonth() + 1}/${parsed.getFullYear()}`;
+  return formatMalaysiaDateOnly(value, { emptyLabel: "Not recorded" });
 }
 
 function formatDateTime(value) {
-  if (!value) return "Not scheduled";
-  const parsed = parseDisplayDateTime(value);
-  if (!parsed) return String(value).replace("T", " ").slice(0, 16);
-
-  const hours24 = parsed.getHours();
-  const hours12 = hours24 % 12 === 0 ? 12 : hours24 % 12;
-  const minutes = String(parsed.getMinutes()).padStart(2, "0");
-  const suffix = hours24 >= 12 ? "PM" : "AM";
-
-  return `${parsed.getDate()}/${parsed.getMonth() + 1}/${parsed.getFullYear()} ${hours12}.${minutes} ${suffix}`;
+  return formatMalaysiaDateTime(value, { emptyLabel: "Not recorded" });
 }
 
 const ADMIN_COUPON_ADD_ON_VALUES = [
@@ -232,13 +207,20 @@ function getComputerNow() {
 }
 
 function toDateTimeLocal(value) {
-  if (!value) return "";
-  return String(value).replace(" ", "T").slice(0, 16);
+  const parsed = parseDisplayDateTime(value);
+  if (!parsed) return "";
+
+  const year = parsed.getFullYear();
+  const month = String(parsed.getMonth() + 1).padStart(2, "0");
+  const day = String(parsed.getDate()).padStart(2, "0");
+  const hours = String(parsed.getHours()).padStart(2, "0");
+  const minutes = String(parsed.getMinutes()).padStart(2, "0");
+
+  return `${year}-${month}-${day}T${hours}:${minutes}`;
 }
 
 function toDateOnly(value) {
-  if (!value) return "";
-  return String(value).replace("T", " ").slice(0, 10);
+  return toMalaysiaDateInputValue(value);
 }
 
 function setServerStatus(message, tone = "neutral") {
@@ -554,15 +536,7 @@ function statCardMarkup(label, value, detail) {
 
 function formatRelativeTime(value) {
   if (!value) return "just now";
-
-  const parsed = new Date(String(value).replace(" ", "T"));
-  if (Number.isNaN(parsed.getTime())) return "recently";
-
-  const seconds = Math.max(0, Math.floor((Date.now() - parsed.getTime()) / 1000));
-  if (seconds < 60) return `${seconds || 1}s ago`;
-  if (seconds < 3600) return `${Math.floor(seconds / 60)}m ago`;
-  if (seconds < 86400) return `${Math.floor(seconds / 3600)}h ago`;
-  return `${Math.floor(seconds / 86400)}d ago`;
+  return formatMalaysiaRelativeTime(value, { now: getComputerNow() });
 }
 
 function detailItemMarkup(label, value) {
@@ -949,10 +923,7 @@ function formatCompactNumber(value) {
 }
 
 function formatShortDay(value) {
-  if (!value) return "";
-  const parsed = new Date(`${value}T00:00:00`);
-  if (Number.isNaN(parsed.getTime())) return value;
-  return parsed.toLocaleDateString("en-US", { weekday: "short" });
+  return formatMalaysiaShortDay(value, { emptyLabel: String(value || "") });
 }
 
 function snapshotItemMarkup(label, value, detail) {
@@ -1837,9 +1808,9 @@ async function exportStudentRecordsCsv(scope = "full") {
       },
       { label: "Meal Code", resolve: (row) => row.mealCode },
       { label: "Status", resolve: (row) => row.status },
-      { label: "Issued At", resolve: (row) => formatDateTime(row.issuedAt) },
-      { label: "Expires At", resolve: (row) => formatDateTime(row.expiresAt) },
-      { label: "Redeemed At", resolve: (row) => formatDateTime(row.redeemedAt) },
+      { label: "Issued At (MYT)", resolve: (row) => formatDateTime(row.issuedAt) },
+      { label: "Expires At (MYT)", resolve: (row) => formatDateTime(row.expiresAt) },
+      { label: "Redeemed At (MYT)", resolve: (row) => formatDateTime(row.redeemedAt) },
       { label: "Redeemed By", resolve: (row) => row.redeemedBy },
     ]);
 
