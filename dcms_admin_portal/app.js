@@ -164,6 +164,69 @@ function formatDateTime(value) {
   return `${parsed.getDate()}/${parsed.getMonth() + 1}/${parsed.getFullYear()} ${hours12}.${minutes} ${suffix}`;
 }
 
+const ADMIN_COUPON_ADD_ON_VALUES = [
+  "Extra vege",
+  "Extra egg",
+  "Extra chicken/fish",
+  "No extra add on",
+];
+
+function normalizeCouponAddOnsForAdmin(value) {
+  const rawSelections = Array.isArray(value)
+    ? value
+    : typeof value === "string" && value.trim()
+      ? (() => {
+          const trimmedValue = value.trim();
+          try {
+            const parsed = JSON.parse(trimmedValue);
+            return Array.isArray(parsed) ? parsed : [trimmedValue];
+          } catch (_error) {
+            return [trimmedValue];
+          }
+        })()
+      : [];
+
+  const uniqueSelections = Array.from(
+    new Set(
+      rawSelections
+        .map((item) => String(item || "").trim())
+        .filter((item) => ADMIN_COUPON_ADD_ON_VALUES.includes(item)),
+    ),
+  );
+
+  if (!uniqueSelections.length) {
+    return [];
+  }
+
+  const extraSelections = uniqueSelections.filter(
+    (item) => item !== "No extra add on",
+  );
+
+  if (extraSelections.length) {
+    return extraSelections;
+  }
+
+  if (uniqueSelections.includes("No extra add on")) {
+    return ["No extra add on"];
+  }
+
+  return [];
+}
+
+function formatCouponAddOns(
+  value,
+  {
+    separator = ", ",
+    emptyLabel = "Not recorded",
+  } = {},
+) {
+  const normalizedEmptyLabel = String(emptyLabel || "Not recorded");
+  const normalizedSelections = normalizeCouponAddOnsForAdmin(value);
+  return normalizedSelections.length
+    ? normalizedSelections.join(separator)
+    : normalizedEmptyLabel;
+}
+
 function getComputerNow() {
   return new Date();
 }
@@ -840,6 +903,7 @@ function redemptionsMarkup(redemptions) {
           <tr>
             <th>Student</th>
             <th>Coupon</th>
+            <th>Add-ons</th>
             <th>Meal</th>
             <th>Status</th>
             <th>Issued</th>
@@ -852,6 +916,7 @@ function redemptionsMarkup(redemptions) {
                 <tr>
                   <td>${escapeHtml(item.studentId)}</td>
                   <td>${escapeHtml(item.couponType)}</td>
+                  <td>${escapeHtml(formatCouponAddOns(item.addOns ?? item.add_ons))}</td>
                   <td>${escapeHtml(item.mealCode)}</td>
                   <td><span class="table-pill ${escapeHtml(item.status)}">${escapeHtml(item.status)}</span></td>
                   <td>${escapeHtml(formatDateTime(item.issuedAt))}</td>
@@ -1216,7 +1281,7 @@ function dashboardMarkup() {
 
       <section class="overview-kpi-grid">
         ${summaryKpiMarkup("Economy food coupon issued", formatCompactNumber(economyFoodCouponsIssuedToday), "Issued from the student app records", "summary-kpi-card--served")}
-        ${summaryKpiMarkup("Meal coupon issued", formatCompactNumber(mealCouponsIssuedToday), "Issued from the student app records", "summary-kpi-card--issued")}
+        ${summaryKpiMarkup("Meal coupon", formatCompactNumber(mealCouponsIssuedToday), "Issued from the student app records", "summary-kpi-card--issued")}
       </section>
 
       <section class="dashboard-chart-grid">
@@ -1763,6 +1828,13 @@ async function exportStudentRecordsCsv(scope = "full") {
       { label: "Student ID", resolve: (row) => row.studentId },
       { label: "Coupon Code", resolve: (row) => row.couponCode },
       { label: "Coupon Type", resolve: (row) => row.couponType },
+      {
+        label: "Add-ons",
+        resolve: (row) =>
+          formatCouponAddOns(row.addOns ?? row.add_ons, {
+            separator: "; ",
+          }),
+      },
       { label: "Meal Code", resolve: (row) => row.mealCode },
       { label: "Status", resolve: (row) => row.status },
       { label: "Issued At", resolve: (row) => formatDateTime(row.issuedAt) },
