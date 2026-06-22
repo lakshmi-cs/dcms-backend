@@ -246,6 +246,39 @@ function formatCouponAddOns(
     : normalizedEmptyLabel;
 }
 
+function shouldDisplayCouponAddOns(mealCode) {
+  const normalizedMealCode = String(mealCode || "").trim().toLowerCase();
+  return normalizedMealCode === "lunch" || normalizedMealCode === "dinner";
+}
+
+function getStudentRecordAddOnsLabel(item) {
+  if (!shouldDisplayCouponAddOns(item?.mealCode)) {
+    return "â€”";
+  }
+
+  return formatCouponAddOns(item?.addOns ?? item?.add_ons);
+}
+
+function normalizeStudentRecordStatus(statusValue, expiresAtValue) {
+  const rawStatus = String(statusValue || "").trim().toLowerCase();
+  if (rawStatus === "redeemed") {
+    return "redeemed";
+  }
+  if (rawStatus === "expired") {
+    return "expired";
+  }
+
+  const expiresAt = parseDisplayDateTime(expiresAtValue);
+  if (!expiresAt) {
+    return rawStatus === "issued" || rawStatus === "active"
+      ? "available"
+      : rawStatus || "available";
+  }
+
+  const currentTime = getComputerNow();
+  return currentTime >= expiresAt ? "expired" : "available";
+}
+
 function getComputerNow() {
   return new Date();
 }
@@ -938,18 +971,23 @@ function redemptionsMarkup(redemptions) {
         </thead>
         <tbody>
           ${redemptions
-            .map(
-              (item) => `
+            .map((item) => {
+              const displayStatus = normalizeStudentRecordStatus(
+                item.status,
+                item.expiresAt,
+              );
+
+              return `
                 <tr>
                   <td>${escapeHtml(item.studentId)}</td>
                   <td>${escapeHtml(item.couponType)}</td>
-                  <td>${escapeHtml(formatCouponAddOns(item.addOns ?? item.add_ons))}</td>
+                  <td>${escapeHtml(getStudentRecordAddOnsLabel(item))}</td>
                   <td>${escapeHtml(item.mealCode)}</td>
-                  <td><span class="table-pill ${escapeHtml(item.status)}">${escapeHtml(item.status)}</span></td>
+                  <td><span class="table-pill ${escapeHtml(displayStatus)}">${escapeHtml(displayStatus)}</span></td>
                   <td>${escapeHtml(formatDateTime(item.issuedAt))}</td>
                 </tr>
-              `,
-            )
+              `;
+            })
             .join("")}
         </tbody>
       </table>
