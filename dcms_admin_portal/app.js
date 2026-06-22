@@ -1,6 +1,7 @@
 const config = window.DCMS_ADMIN_CONFIG || {};
 const AUTH_STORAGE_KEY = "dcms_admin_token";
 const API_BASE_STORAGE_KEY = "dcms_admin_api_base_url";
+const timeUtils = window.DCMSTime || {};
 
 function safeStorageGet(key) {
   try {
@@ -120,6 +121,10 @@ function escapeHtml(value) {
 }
 
 function parseDisplayDateTime(value) {
+  if (typeof timeUtils.parseMalaysiaDateTime === "function") {
+    return timeUtils.parseMalaysiaDateTime(value);
+  }
+
   if (value instanceof Date) {
     return Number.isNaN(value.getTime()) ? null : value;
   }
@@ -146,12 +151,25 @@ function parseDisplayDateTime(value) {
 }
 
 function formatDateOnly(value) {
+  if (typeof timeUtils.formatMalaysiaDateOnly === "function") {
+    return timeUtils.formatMalaysiaDateOnly(value, {
+      emptyLabel: "Not scheduled",
+    });
+  }
+
   const parsed = parseDisplayDateTime(value);
   if (!parsed) return value ? String(value) : "Not scheduled";
   return `${parsed.getDate()}/${parsed.getMonth() + 1}/${parsed.getFullYear()}`;
 }
 
 function formatDateTime(value) {
+  if (typeof timeUtils.formatMalaysiaDateTime === "function") {
+    const formatted = timeUtils.formatMalaysiaDateTime(value, {
+      emptyLabel: "Not scheduled",
+    });
+    return formatted.replace(/:(\d{2})\s([AP]M)$/i, ".$1 $2");
+  }
+
   if (!value) return "Not scheduled";
   const parsed = parseDisplayDateTime(value);
   if (!parsed) return String(value).replace("T", " ").slice(0, 16);
@@ -553,6 +571,10 @@ function statCardMarkup(label, value, detail) {
 }
 
 function formatRelativeTime(value) {
+  if (typeof timeUtils.formatMalaysiaRelativeTime === "function") {
+    return timeUtils.formatMalaysiaRelativeTime(value, { now: new Date() });
+  }
+
   if (!value) return "just now";
 
   const parsed = new Date(String(value).replace(" ", "T"));
@@ -949,6 +971,10 @@ function formatCompactNumber(value) {
 }
 
 function formatShortDay(value) {
+  if (typeof timeUtils.formatMalaysiaShortDay === "function") {
+    return timeUtils.formatMalaysiaShortDay(value, { emptyLabel: value || "" });
+  }
+
   if (!value) return "";
   const parsed = new Date(`${value}T00:00:00`);
   if (Number.isNaN(parsed.getTime())) return value;
