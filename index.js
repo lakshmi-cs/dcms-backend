@@ -291,6 +291,18 @@ async function initialiseDatabase() {
   `);
 
   await dbQuery(`
+    CREATE TABLE IF NOT EXISTS meal_feedback (
+      id INT AUTO_INCREMENT PRIMARY KEY,
+      student_id VARCHAR(50) NOT NULL,
+      meal_code VARCHAR(30) NOT NULL,
+      rating INT NOT NULL,
+      comment TEXT NOT NULL,
+      submitted_at DATETIME NOT NULL,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    )
+  `);
+
+  await dbQuery(`
     CREATE TABLE IF NOT EXISTS coupon_redemptions (
       id INT AUTO_INCREMENT PRIMARY KEY,
       student_id VARCHAR(50) NOT NULL,
@@ -461,6 +473,26 @@ async function getAllNews() {
       ORDER BY publish_at DESC, created_at DESC
       LIMIT 50
     `,
+  );
+
+  return rows;
+}
+
+async function getMealFeedback(limit = 100) {
+  const rows = await dbQuery(
+    `
+      SELECT
+        id,
+        student_id AS studentId,
+        meal_code AS mealCode,
+        rating,
+        comment,
+        submitted_at AS submittedAt
+      FROM meal_feedback
+      ORDER BY submitted_at DESC
+      LIMIT ?
+    `,
+    [Number(limit || 100)],
   );
 
   return rows;
@@ -683,6 +715,70 @@ app.get('/news', async (req, res) => {
   }
 });
 
+app.post('/feedback', async (req, res) => {
+  const { studentId, mealCode, rating, comment } = req.body;
+  const normalizedMealCode = String(mealCode || '').trim().toLowerCase();
+  const normalizedRating = Number(rating);
+  const normalizedComment = String(comment || '').trim();
+
+  if (!studentId || !['breakfast', 'lunch', 'dinner'].includes(normalizedMealCode)) {
+    res.status(400).json({ status: 'error', message: 'Student ID and a valid meal are required.' });
+    return;
+  }
+
+  if (!Number.isInteger(normalizedRating) || normalizedRating < 1 || normalizedRating > 5) {
+    res.status(400).json({ status: 'error', message: 'Rating must be between 1 and 5.' });
+    return;
+  }
+
+  if (normalizedComment.length < 5) {
+    res.status(400).json({ status: 'error', message: 'Please enter at least 5 characters of feedback.' });
+    return;
+  }
+
+  try {
+    const students = await dbQuery('SELECT student_id FROM users WHERE student_id = ? LIMIT 1', [studentId]);
+    if (students.length === 0) {
+      res.status(404).json({ status: 'error', message: 'Student not found' });
+      return;
+    }
+
+    const now = getZonedNowParts();
+    await dbQuery(
+      `
+        INSERT INTO meal_feedback (
+          student_id,
+          meal_code,
+          rating,
+          comment,
+          submitted_at
+        ) VALUES (?, ?, ?, ?, ?)
+      `,
+      [
+        studentId,
+        normalizedMealCode,
+        normalizedRating,
+        normalizedComment,
+        now.dateTime,
+      ],
+    );
+
+    res.json({
+      status: 'success',
+      data: {
+        studentId,
+        mealCode: normalizedMealCode,
+        rating: normalizedRating,
+        comment: normalizedComment,
+        submittedAt: now.dateTime,
+      },
+      message: 'Food feedback submitted successfully.',
+    });
+  } catch (error) {
+    res.status(500).json({ status: 'error', message: error.message });
+  }
+});
+
 app.post('/coupons/issue', async (req, res) => {
   const { studentId, couponType } = req.body;
   const addOns = req.body.addOns ?? req.body.add_ons ?? req.body.addons;
@@ -834,10 +930,11 @@ app.post('/admin/login', async (req, res) => {
 app.get('/admin/content', authenticateAdmin, async (req, res) => {
   try {
     const now = getZonedNowParts();
-    const [mealWindows, menus, news] = await Promise.all([
+    const [mealWindows, menus, news, mealFeedback] = await Promise.all([
       getMealWindows(),
       getMenusForDate(now.date),
       getAllNews(),
+      getMealFeedback(100),
     ]);
 
     res.json({
@@ -850,6 +947,7 @@ app.get('/admin/content', authenticateAdmin, async (req, res) => {
         mealWindows,
         menus,
         news,
+        mealFeedback,
       },
     });
   } catch (error) {
@@ -860,13 +958,14 @@ app.get('/admin/content', authenticateAdmin, async (req, res) => {
 app.get('/admin/dashboard', authenticateAdmin, async (req, res) => {
   try {
     const now = getZonedNowParts();
-    const [mealWindows, menus, news, recentRedemptions, issuedSummaryRows, redeemedSummaryRows] = await Promise.all([
+    const [mealWindows, menus, news, recentRedemptions, issuedSummaryRows, redeemedSummaryRows, feedbackCountRows] = await Promise.all([
       getMealWindows(),
       getMenusForDate(now.date),
       getAllNews(),
       getRecentRedemptions(now.date),
       dbQuery('SELECT COUNT(*) AS total FROM coupon_redemptions WHERE DATE(issued_at) = ?', [now.date]),
       dbQuery('SELECT COUNT(*) AS total FROM coupon_redemptions WHERE DATE(redeemed_at) = ?', [now.date]),
+      dbQuery('SELECT COUNT(*) AS total FROM meal_feedback WHERE DATE(submitted_at) = ?', [now.date]),
     ]);
 
     res.json({
@@ -881,6 +980,7 @@ app.get('/admin/dashboard', authenticateAdmin, async (req, res) => {
           publishedNews: news.filter((item) => item.status === 'published').length,
           qrIssuedToday: Number(issuedSummaryRows[0]?.total || 0),
           qrRedeemedToday: Number(redeemedSummaryRows[0]?.total || 0),
+          feedbackToday: Number(feedbackCountRows[0]?.total || 0),
         },
         mealWindows,
         menus,
