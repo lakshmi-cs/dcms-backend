@@ -2077,6 +2077,11 @@ th {
   background: rgba(249, 217, 118, 0.1);
 }
 
+.table-pill.available {
+  color: var(--success);
+  background: rgba(134, 239, 172, 0.1);
+}
+
 .table-pill.redeemed {
   color: var(--success);
   background: rgba(134, 239, 172, 0.1);
