@@ -325,27 +325,6 @@ async function initialiseDatabase() {
     ADD COLUMN IF NOT EXISTS add_ons JSON NULL
   `).catch(() => {});
 
-  const defaultMealWindows = [
-    ['breakfast', 'Breakfast', '07:00:00', '10:30:00', 1],
-    ['lunch', 'Lunch', '12:00:00', '15:00:00', 2],
-    ['dinner', 'Dinner', '18:00:00', '22:00:00', 3],
-  ];
-
-  for (const mealWindow of defaultMealWindows) {
-    await dbQuery(
-      `
-        INSERT INTO meal_windows (meal_code, meal_name, start_time, end_time, sort_order)
-        VALUES (?, ?, ?, ?, ?)
-        ON DUPLICATE KEY UPDATE
-          meal_name = VALUES(meal_name),
-          start_time = VALUES(start_time),
-          end_time = VALUES(end_time),
-          sort_order = VALUES(sort_order)
-      `,
-      mealWindow,
-    );
-  }
-
   const now = getZonedNowParts();
   const defaultMenus = [
     ['breakfast', ['Nasi Lemak', 'Roti Canai', 'Toast & Jam', 'Coffee or Teh Tarik']],
@@ -783,15 +762,9 @@ app.post('/coupons/issue', async (req, res) => {
   const { studentId, couponType } = req.body;
   const addOns = req.body.addOns ?? req.body.add_ons ?? req.body.addons;
   const normalizedCouponType = sanitizeCouponType(couponType);
-  const normalizedAddOns = normalizeCouponAddOns(addOns);
 
   if (!studentId || !normalizedCouponType) {
     res.status(400).json({ status: 'error', message: 'Student ID and a valid coupon type are required' });
-    return;
-  }
-
-  if (normalizedCouponType === 'Economy' && normalizedAddOns.length === 0) {
-    res.status(400).json({ status: 'error', message: 'Please select at least one add-on option.' });
     return;
   }
 
@@ -799,9 +772,20 @@ app.post('/coupons/issue', async (req, res) => {
     const now = getZonedNowParts();
     const mealWindows = await getMealWindows();
     const activeMeal = getActiveMeal(mealWindows, now.totalMinutes);
+    const requestedAddOns = normalizeCouponAddOns(addOns);
 
     if (!activeMeal.isActive) {
       res.status(400).json({ status: 'error', message: 'Coupons can only be generated during cafeteria operating hours' });
+      return;
+    }
+
+    const shouldPersistAddOns =
+      normalizedCouponType === 'Economy' &&
+      ['lunch', 'dinner'].includes(String(activeMeal.mealCode || '').toLowerCase());
+    const normalizedAddOns = shouldPersistAddOns ? requestedAddOns : [];
+
+    if (shouldPersistAddOns && normalizedAddOns.length === 0) {
+      res.status(400).json({ status: 'error', message: 'Please select at least one add-on option.' });
       return;
     }
 
