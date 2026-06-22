@@ -35,6 +35,7 @@ const db = mysql.createPool({
   password: process.env.TIDB_PASSWORD,
   database: process.env.TIDB_DATABASE,
   connectionLimit: 10, // Use a number here
+  dateStrings: true,
   ssl: {
     rejectUnauthorized: false,
   },
