@@ -253,7 +253,7 @@ function shouldDisplayCouponAddOns(mealCode) {
 
 function getStudentRecordAddOnsLabel(item) {
   if (!shouldDisplayCouponAddOns(item?.mealCode)) {
-    return "â€”";
+    return "No add ons";
   }
 
   return formatCouponAddOns(item?.addOns ?? item?.add_ons);
