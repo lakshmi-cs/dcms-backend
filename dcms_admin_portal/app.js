@@ -1,2039 +1,2004 @@
-const config = window.DCMS_ADMIN_CONFIG || {};
-const AUTH_STORAGE_KEY = "dcms_admin_token";
-const API_BASE_STORAGE_KEY = "dcms_admin_api_base_url";
-const timeUtils = window.DCMSTime || {};
+const crypto = require("crypto");
+const express = require("express");
+const path = require("path");
+const bodyParser = require("body-parser");
+const cors = require("cors");
+require("dotenv").config();
 
-function safeStorageGet(key) {
-  try {
-    return window.localStorage.getItem(key);
-  } catch (_error) {
-    return "";
-  }
-}
+const { ping, query } = require("./db");
+const {
+  AppError,
+  createOrder,
+  expireCoupons,
+  generateCoupon,
+  getActiveCoupons,
+  getAnalyticsSummary,
+  getCouponByCode,
+  getEconomyFoodItems,
+  getLatestCouponForStudent,
+  getStudentById,
+  listCoupons,
+  redeemCoupon,
+} = require("./services/couponModuleService");
+const { normalizeCouponAddOns } = require("./utils/couponAddOns");
 
-function safeStorageSet(key, value) {
-  try {
-    window.localStorage.setItem(key, value);
-  } catch (_error) {
-    // Ignore storage errors so the portal can still render.
-  }
-}
+const APP_TIME_ZONE = process.env.APP_TIME_ZONE || "Asia/Kuala_Lumpur";
+const ADMIN_USERNAME = process.env.ADMIN_USERNAME || "admin";
+const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || "admin123";
+const ADMIN_TOKEN_SECRET =
+  process.env.ADMIN_TOKEN_SECRET || "replace-this-admin-secret";
+const COUPON_TOKEN_SECRET =
+  process.env.COUPON_TOKEN_SECRET || "replace-this-coupon-secret";
+const COUPON_TOKEN_TTL_MINUTES = Number(
+  process.env.COUPON_TOKEN_TTL_MINUTES || 5,
+);
+const ADD_ON_DIAGNOSTIC_VERSION = "D44F_ADDONS_WRITE_V2";
+let couponRedemptionsHasAddOns = true;
+let couponRedemptionsHasLegacyAddOnsJson = false;
 
-function safeStorageRemove(key) {
-  try {
-    window.localStorage.removeItem(key);
-  } catch (_error) {
-    // Ignore storage errors so logout can still continue.
-  }
-}
+function getZonedNowParts(date = new Date()) {
+  const formatter = new Intl.DateTimeFormat("en-CA", {
+    timeZone: APP_TIME_ZONE,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hour12: false,
+  });
 
-function normalizeApiBaseUrl(value) {
-  return String(value || "").trim().replace(/\/$/, "");
-}
-
-function resolveDefaultApiBaseUrl() {
-  const configuredUrl = normalizeApiBaseUrl(config.apiBaseUrl);
-  if (configuredUrl) {
-    return configuredUrl;
-  }
-
-  const { protocol, hostname, origin } = window.location;
-  if (protocol === "http:" || protocol === "https:") {
-    if (hostname === "localhost" || hostname === "127.0.0.1") {
-      return "http://localhost:3000";
+  const parts = formatter.formatToParts(date).reduce((acc, part) => {
+    if (part.type !== "literal") {
+      acc[part.type] = part.value;
     }
-    return normalizeApiBaseUrl(origin);
-  }
+    return acc;
+  }, {});
 
-  return "http://localhost:3000";
-}
+  const totalMinutes = Number(parts.hour) * 60 + Number(parts.minute);
 
-function getStoredApiBaseUrl() {
-  const configuredUrl = normalizeApiBaseUrl(config.apiBaseUrl);
-  if (configuredUrl) {
-    safeStorageSet(API_BASE_STORAGE_KEY, configuredUrl);
-    return configuredUrl;
-  }
-
-  const storedUrl = normalizeApiBaseUrl(
-    safeStorageGet(API_BASE_STORAGE_KEY),
-  );
-  return storedUrl || resolveDefaultApiBaseUrl();
-}
-
-function setApiBaseUrl(value) {
-  const normalized = normalizeApiBaseUrl(value);
-  state.apiBaseUrl = normalized || resolveDefaultApiBaseUrl();
-  safeStorageSet(API_BASE_STORAGE_KEY, state.apiBaseUrl);
-}
-
-const state = {
-  token: safeStorageGet(AUTH_STORAGE_KEY) || "",
-  apiBaseUrl: getStoredApiBaseUrl(),
-  dashboard: null,
-  content: null,
-  activityRedemptions: [],
-  scheduleDrafts: {},
-  sessionQr: null,
-  validationResult: null,
-  sidebarOpen: false,
-  profileMenuOpen: false,
-  workspaceQuery: "",
-  serverStatusMessage: "Backend connection pending",
-  serverStatusTone: "neutral",
-  loading: false,
-  autoRefreshHandle: null,
-  backgroundLoadInFlight: false,
-};
-
-const appRoot = document.getElementById("appRoot");
-const serverStatus = document.getElementById("serverStatus");
-const logoutButton = document.getElementById("logoutButton");
-const shellTopbar = document.querySelector(".topbar");
-const pageShell = document.querySelector(".page-shell");
-
-const WORKSPACE_SECTIONS = [
-  { key: "overview", label: "Dashboard", detail: "Cafeteria overview", terms: ["dashboard", "overview", "home", "summary"] },
-  { key: "service", label: "Meal Hours", detail: "Opening times", terms: ["service", "meal", "windows", "schedule", "hours", "counter"] },
-  { key: "menu", label: "Daily Menu", detail: "Breakfast, lunch, and dinner", terms: ["menu", "publishing", "breakfast", "lunch", "dinner", "meals"] },
-  { key: "news", label: "Notices", detail: "Student announcements", terms: ["news", "announcement", "broadcast", "draft", "published", "notice"] },
-  { key: "activity", label: "Student Records", detail: "Recent coupon activity", terms: ["activity", "log", "redemption", "history", "audit", "records"] },
-];
-
-function pageUrl(sectionKey) {
-  return sectionKey === "overview" ? "./index.html" : `./index.html?page=${encodeURIComponent(sectionKey)}`;
-}
-
-function getCurrentPageKey() {
-  const page = new URLSearchParams(window.location.search).get("page");
-  if (!page) return "overview";
-  const matched = WORKSPACE_SECTIONS.find((section) => section.key === page);
-  return matched ? matched.key : "overview";
-}
-
-function escapeHtml(value) {
-  return String(value ?? "")
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&#039;");
-}
-
-function parseDisplayDateTime(value) {
-  if (typeof timeUtils.parseMalaysiaDateTime === "function") {
-    return timeUtils.parseMalaysiaDateTime(value);
-  }
-
-  if (value instanceof Date) {
-    return Number.isNaN(value.getTime()) ? null : value;
-  }
-
-  const raw = String(value || "").trim();
-  if (!raw) return null;
-  const normalized = raw.replace(" ", "T");
-  const parsed = new Date(normalized);
-  if (!Number.isNaN(parsed.getTime())) {
-    return parsed;
-  }
-
-  const match = /^(\d{4})-(\d{2})-(\d{2})(?:[ T](\d{2}):(\d{2})(?::(\d{2}))?)?$/.exec(raw);
-  if (!match) return null;
-
-  return new Date(
-    Number(match[1]),
-    Number(match[2]) - 1,
-    Number(match[3]),
-    Number(match[4] || 0),
-    Number(match[5] || 0),
-    Number(match[6] || 0),
-  );
-}
-
-function formatDateOnly(value) {
-  if (typeof timeUtils.formatMalaysiaDateOnly === "function") {
-    return timeUtils.formatMalaysiaDateOnly(value, {
-      emptyLabel: "Not scheduled",
-    });
-  }
-
-  const parsed = parseDisplayDateTime(value);
-  if (!parsed) return value ? String(value) : "Not scheduled";
-  return `${parsed.getDate()}/${parsed.getMonth() + 1}/${parsed.getFullYear()}`;
-}
-
-function formatDateTime(value) {
-  if (typeof timeUtils.formatMalaysiaDateTime === "function") {
-    const formatted = timeUtils.formatMalaysiaDateTime(value, {
-      emptyLabel: "Not scheduled",
-    });
-    return formatted.replace(/:(\d{2})\s([AP]M)$/i, ".$1 $2");
-  }
-
-  if (!value) return "Not scheduled";
-  const parsed = parseDisplayDateTime(value);
-  if (!parsed) return String(value).replace("T", " ").slice(0, 16);
-
-  const hours24 = parsed.getHours();
-  const hours12 = hours24 % 12 === 0 ? 12 : hours24 % 12;
-  const minutes = String(parsed.getMinutes()).padStart(2, "0");
-  const suffix = hours24 >= 12 ? "PM" : "AM";
-
-  return `${parsed.getDate()}/${parsed.getMonth() + 1}/${parsed.getFullYear()} ${hours12}.${minutes} ${suffix}`;
-}
-
-const ADMIN_COUPON_ADD_ON_VALUES = [
-  "Extra vege",
-  "Extra egg",
-  "Extra chicken/fish",
-  "No extra add on",
-];
-
-function normalizeCouponAddOnsForAdmin(value) {
-  const rawSelections = Array.isArray(value)
-    ? value
-    : typeof value === "string" && value.trim()
-      ? (() => {
-          const trimmedValue = value.trim();
-          try {
-            const parsed = JSON.parse(trimmedValue);
-            return Array.isArray(parsed) ? parsed : [trimmedValue];
-          } catch (_error) {
-            return [trimmedValue];
-          }
-        })()
-      : [];
-
-  const uniqueSelections = Array.from(
-    new Set(
-      rawSelections
-        .map((item) => String(item || "").trim())
-        .filter((item) => ADMIN_COUPON_ADD_ON_VALUES.includes(item)),
-    ),
-  );
-
-  if (!uniqueSelections.length) {
-    return [];
-  }
-
-  const extraSelections = uniqueSelections.filter(
-    (item) => item !== "No extra add on",
-  );
-
-  if (extraSelections.length) {
-    return extraSelections;
-  }
-
-  if (uniqueSelections.includes("No extra add on")) {
-    return ["No extra add on"];
-  }
-
-  return [];
-}
-
-function formatCouponAddOns(
-  value,
-  {
-    separator = ", ",
-    emptyLabel = "Not recorded",
-  } = {},
-) {
-  const normalizedEmptyLabel = String(emptyLabel || "Not recorded");
-  const normalizedSelections = normalizeCouponAddOnsForAdmin(value);
-  return normalizedSelections.length
-    ? normalizedSelections.join(separator)
-    : normalizedEmptyLabel;
-}
-
-function getComputerNow() {
-  return new Date();
-}
-
-function toDateTimeLocal(value) {
-  if (!value) return "";
-  return String(value).replace(" ", "T").slice(0, 16);
-}
-
-function toDateOnly(value) {
-  if (!value) return "";
-  return String(value).replace("T", " ").slice(0, 10);
-}
-
-function setServerStatus(message, tone = "neutral") {
-  state.serverStatusMessage = message;
-  state.serverStatusTone = tone;
-  serverStatus.textContent = message;
-  serverStatus.dataset.tone = tone;
-
-  const workspaceServerStatus = document.getElementById("workspaceServerStatus");
-  if (workspaceServerStatus) {
-    workspaceServerStatus.textContent = message;
-    workspaceServerStatus.className = `toolbar-chip ${tone}`;
-  }
-}
-
-function showFlash(message, tone = "info") {
-  let flashStack = document.getElementById("flashStack");
-  if (!flashStack) {
-    flashStack = document.createElement("div");
-    flashStack.id = "flashStack";
-    flashStack.className = "flash-stack";
-    document.body.appendChild(flashStack);
-  }
-
-  const flash = document.createElement("div");
-  flash.className = `flash-card ${tone}`;
-  flash.textContent = message;
-  flashStack.appendChild(flash);
-
-  window.setTimeout(() => {
-    flash.classList.add("leaving");
-    window.setTimeout(() => flash.remove(), 260);
-  }, 3200);
-}
-
-function syncProfileMenu() {
-  const profileMenu = document.querySelector(".profile-menu");
-  const profileMenuButton = document.getElementById("profileMenuButton");
-  const profileCaret = document.querySelector(".profile-caret");
-  const profileDropdown = document.querySelector(".profile-dropdown");
-  const dashboardLogoutButton = document.getElementById("dashboardLogoutButton");
-
-  if (profileMenu) {
-    profileMenu.classList.toggle("is-open", state.profileMenuOpen);
-  }
-
-  if (profileMenuButton) {
-    profileMenuButton.setAttribute("aria-expanded", state.profileMenuOpen ? "true" : "false");
-  }
-
-  if (profileDropdown) {
-    profileDropdown.classList.toggle("is-open", state.profileMenuOpen);
-  }
-}
-
-function setProfileMenuOpen(isOpen) {
-  state.profileMenuOpen = Boolean(isOpen);
-  syncProfileMenu();
-}
-
-function handleDocumentClick(event) {
-  if (!state.profileMenuOpen) return;
-
-  const profileMenu = document.querySelector(".profile-menu");
-  if (profileMenu && profileMenu.contains(event.target)) {
-    return;
-  }
-
-  setProfileMenuOpen(false);
-}
-
-async function api(path, options = {}) {
-  const request = {
-    method: options.method || "GET",
-    cache: "no-store",
-    headers: {
-      "Content-Type": "application/json",
-      ...(options.headers || {}),
-    },
+  return {
+    date: `${parts.year}-${parts.month}-${parts.day}`,
+    time: `${parts.hour}:${parts.minute}:${parts.second}`,
+    dateTime: `${parts.year}-${parts.month}-${parts.day} ${parts.hour}:${parts.minute}:${parts.second}`,
+    totalMinutes,
   };
-
-  if (state.token && options.auth !== false) {
-    request.headers.Authorization = `Bearer ${state.token}`;
-  }
-
-  if (options.body) {
-    request.body = JSON.stringify(options.body);
-  }
-
-  let response;
-  try {
-    response = await fetch(`${state.apiBaseUrl}${path}`, request);
-  } catch (error) {
-    throw new Error(`Cannot reach the admin API at ${state.apiBaseUrl}. Check the API base URL and backend availability.`);
-  }
-
-  const rawPayload = await response.text();
-  if (!rawPayload.trim()) {
-    const error = new Error(`The API at ${state.apiBaseUrl} returned an empty response for ${path}.`);
-    error.status = response.status;
-    throw error;
-  }
-
-  let payload = {};
-  try {
-    payload = JSON.parse(rawPayload);
-  } catch (error) {
-    const parseError = new Error(`The API at ${state.apiBaseUrl} did not return JSON for ${path}.`);
-    parseError.status = response.status;
-    throw parseError;
-  }
-
-  if (!response.ok || payload.status === "error") {
-    const error = new Error(payload.message || "Request failed");
-    error.status = response.status;
-    throw error;
-  }
-
-  return payload.data ?? payload;
 }
 
-async function checkHealth() {
-  try {
-    const data = await api("/health", { auth: false });
-    const label = data.activeMeal?.isActive
-      ? `${data.activeMeal.mealName} is live`
-      : `Connected Â· ${data.timeZone}`;
-    setServerStatus(label, "success");
-  } catch (error) {
-    setServerStatus("Backend unavailable", "danger");
-  }
+function parseTimeToMinutes(timeValue) {
+  const value = String(timeValue || "00:00:00");
+  const [hours = "0", minutes = "0"] = value.split(":");
+  return Number(hours) * 60 + Number(minutes);
 }
 
-async function login(username, password) {
-  state.loading = true;
-  setServerStatus("Connecting to backend...", "neutral");
-  render();
-
-  try {
-    const data = await api("/admin/login", {
-      method: "POST",
-      auth: false,
-      body: { username, password },
-    });
-
-    const token = data?.token;
-
-    if (!token) {
-      throw new Error("Login response did not include an admin token");
-    }
-
-    state.token = token;
-    safeStorageSet(AUTH_STORAGE_KEY, state.token);
-    setServerStatus("Connected Â· Signing in", "success");
-    showFlash("Admin session started", "success");
-    await loadDashboard();
-  } catch (error) {
-    state.loading = false;
-    render();
-    showFlash(error.message || "Unable to sign in", "danger");
-  }
-}
-
-function logout() {
-  stopDashboardAutoRefresh();
-  state.token = "";
-  state.dashboard = null;
-  state.content = null;
-  state.sessionQr = null;
-  state.validationResult = null;
-  state.sidebarOpen = false;
-  state.profileMenuOpen = false;
-  state.loading = false;
-  safeStorageRemove(AUTH_STORAGE_KEY);
-  render();
-  showFlash("Logged out", "info");
-}
-
-function stopDashboardAutoRefresh() {
-  if (state.autoRefreshHandle) {
-    window.clearInterval(state.autoRefreshHandle);
-    state.autoRefreshHandle = null;
-  }
-}
-
-function startDashboardAutoRefresh() {
-  stopDashboardAutoRefresh();
-  if (!state.token) return;
-
-  state.autoRefreshHandle = window.setInterval(() => {
-    const currentPageKey = getCurrentPageKey();
-    const autoRefreshEnabledPages = new Set(["overview", "activity"]);
-
-    if (
-      document.hidden ||
-      !state.token ||
-      state.backgroundLoadInFlight ||
-      !autoRefreshEnabledPages.has(currentPageKey)
-    ) {
-      return;
-    }
-    loadDashboard({ isBackgroundRefresh: true });
-  }, 5000);
-}
-
-async function loadDashboard(options = {}) {
-  const isBackgroundRefresh = Boolean(options.isBackgroundRefresh);
-
-  if (isBackgroundRefresh) {
-    if (state.backgroundLoadInFlight) return;
-    state.backgroundLoadInFlight = true;
-  } else {
-    state.loading = true;
-    render();
-  }
-
-  try {
-    const requests = [
-      api("/admin/dashboard"),
-      api("/admin/content"),
-      api("/admin/redemptions?limit=5000"),
-    ];
-
-    const [dashboard, content, activityRedemptions] = await Promise.all(requests);
-
-    state.dashboard = dashboard;
-    state.content = content;
-    state.activityRedemptions = Array.isArray(activityRedemptions)
-      ? activityRedemptions
-      : [];
-    setServerStatus(
-      dashboard?.activeMeal?.isActive
-        ? `${dashboard.activeMeal.mealName} is live`
-        : `Connected Â· ${content?.timeZone || dashboard?.timeZone || "Backend ready"}`,
-      "success",
-    );
-    if (!isBackgroundRefresh) {
-      state.loading = false;
-      render();
-    } else {
-      render();
-    }
-    startDashboardAutoRefresh();
-  } catch (error) {
-    if (!isBackgroundRefresh) {
-      state.loading = false;
-    }
-    if (error.status === 401) {
-      logout();
-      if (!isBackgroundRefresh) {
-        showFlash("Your admin session expired. Please log in again.", "danger");
-      }
-      return;
-    }
-    if (!isBackgroundRefresh) {
-      setServerStatus("Backend unavailable", "danger");
-      render();
-      showFlash(error.message || "Unable to load dashboard", "danger");
-    }
-  } finally {
-    if (isBackgroundRefresh) {
-      state.backgroundLoadInFlight = false;
-    }
-  }
-}
-
-function loginMarkup() {
-  return `
-    <section class="login-shell">
-      <div class="login-panel glass-card">
-        <div class="login-copy">
-          <p class="eyebrow">Cafeteria management dashboard</p>
-          <h2>Manage meal hours, live QR service, daily menus, and student notices.</h2>
-          <p>
-            This website links directly to your cafeteria backend, so updates made here can flow into the student application.
-          </p>
-          <div class="feature-list">
-            <div class="feature-chip">Live QR issue + validation</div>
-            <div class="feature-chip">Daily menu publishing</div>
-            <div class="feature-chip">News distribution to the app</div>
-          </div>
-        </div>
-        <form id="loginForm" class="auth-form">
-          <label>
-            <span>Admin username</span>
-            <input name="username" type="text" placeholder="admin" required />
-          </label>
-          <label>
-            <span>Password</span>
-            <input name="password" type="password" placeholder="Enter password" required />
-          </label>
-          <button type="submit" class="primary-button" ${state.loading ? "disabled" : ""}>
-            ${state.loading ? "Signing in..." : "Enter Control Room"}
-          </button>
-          <p class="helper-copy">
-            These credentials come from your backend <code>.env</code> file.
-          </p>
-        </form>
-      </div>
-    </section>
-  `;
-}
-
-function statCardMarkup(label, value, detail) {
-  return `
-    <article class="stat-card glass-card">
-      <span>${escapeHtml(label)}</span>
-      <strong>${escapeHtml(value)}</strong>
-      <small>${escapeHtml(detail)}</small>
-    </article>
-  `;
-}
-
-function formatRelativeTime(value) {
-  if (typeof timeUtils.formatMalaysiaRelativeTime === "function") {
-    return timeUtils.formatMalaysiaRelativeTime(value, { now: new Date() });
-  }
-
-  if (!value) return "just now";
-
-  const parsed = new Date(String(value).replace(" ", "T"));
-  if (Number.isNaN(parsed.getTime())) return "recently";
-
-  const seconds = Math.max(0, Math.floor((Date.now() - parsed.getTime()) / 1000));
-  if (seconds < 60) return `${seconds || 1}s ago`;
-  if (seconds < 3600) return `${Math.floor(seconds / 60)}m ago`;
-  if (seconds < 86400) return `${Math.floor(seconds / 3600)}h ago`;
-  return `${Math.floor(seconds / 86400)}d ago`;
-}
-
-function detailItemMarkup(label, value) {
-  return `
-    <div class="detail-item">
-      <span>${escapeHtml(label)}</span>
-      <strong>${escapeHtml(value || "Not available")}</strong>
-    </div>
-  `;
-}
-
-const NAV_ICON_LABELS = {
-  overview: "H",
-  service: "S",
-  menu: "M",
-  news: "N",
-  validation: "Q",
-  activity: "A",
-};
-
-function navLinkMarkup(section) {
-  return `
-    <a class="dashboard-nav-link ${state.currentPage === section.key ? "is-active" : ""}" data-key="${escapeHtml(section.key)}" href="${escapeHtml(pageUrl(section.key))}">
-      <span class="nav-icon">${escapeHtml(NAV_ICON_LABELS[section.key] || section.label.charAt(0))}</span>
-      <div class="nav-copy">
-        <strong>${escapeHtml(section.label)}</strong>
-        <small>${escapeHtml(section.detail)}</small>
-      </div>
-    </a>
-  `;
-}
-
-function resolveWorkspaceSection(query) {
-  const normalizedQuery = String(query || "").trim().toLowerCase();
-  if (!normalizedQuery) return null;
-  return WORKSPACE_SECTIONS.find((section) =>
-    section.terms.some((term) => term.includes(normalizedQuery) || normalizedQuery.includes(term)),
-  ) || null;
-}
-
-function overviewCardMarkup(sectionKey, title, detail, metricLabel, metricValue) {
-  return `
-    <article class="overview-card glass-card">
-      <span>${escapeHtml(metricLabel)}</span>
-      <strong>${escapeHtml(metricValue)}</strong>
-      <p>${escapeHtml(detail)}</p>
-      <a class="secondary-button link-button" href="${escapeHtml(pageUrl(sectionKey))}">Open ${escapeHtml(title)}</a>
-    </article>
-  `;
-}
-
-function appImpactCardMarkup(title, subtitle, body, items = []) {
-  return `
-    <article class="glass-card panel-card app-impact-card">
-      <div class="section-row compact">
-        <div>
-          <p class="eyebrow">Student app link</p>
-          <h3>${escapeHtml(title)}</h3>
-        </div>
-      </div>
-      <p class="panel-copy">${escapeHtml(subtitle)}</p>
-      ${items.length
-        ? `<div class="app-impact-list">
-            ${items
-              .map(
-                (item) => `
-                  <div class="app-impact-item">
-                    <span>${escapeHtml(item.label)}</span>
-                    <strong>${escapeHtml(item.value)}</strong>
-                  </div>
-                `,
-              )
-              .join("")}
-          </div>`
-        : ""}
-      <p class="app-impact-body">${escapeHtml(body)}</p>
-    </article>
-  `;
-}
-
-function menuPreviewMarkup(menus) {
-  return `
-    <article class="glass-card panel-card app-preview-card">
-      <div class="section-row compact">
-        <div>
-          <p class="eyebrow">App preview</p>
-          <h3>Menu tab snapshot</h3>
-        </div>
-      </div>
-      <div class="app-preview-list">
-        ${menus
-          .map(
-            (menu) => `
-              <div class="app-preview-item">
-                <strong>${escapeHtml(menu.mealName)}</strong>
-                <span>${escapeHtml((menu.items || []).slice(0, 3).join(", ") || "No items published yet")}</span>
-              </div>
-            `,
-          )
-          .join("")}
-      </div>
-    </article>
-  `;
-}
-
-function newsPreviewMarkup(news) {
-  const visibleNews = news.filter((item) => item.status === "published").slice(0, 4);
-  return `
-    <article class="glass-card panel-card app-preview-card">
-      <div class="section-row compact">
-        <div>
-          <p class="eyebrow">App preview</p>
-          <h3>News feed snapshot</h3>
-        </div>
-      </div>
-      <div class="app-preview-list">
-        ${(visibleNews.length ? visibleNews : news.slice(0, 4))
-          .map(
-            (item) => `
-              <div class="app-preview-item">
-                <strong>${escapeHtml(item.title || "Announcement")}</strong>
-                <span>${escapeHtml(item.status || "published")} - ${escapeHtml(formatDateTime(item.publishAt))}</span>
-              </div>
-            `,
-          )
-          .join("") || `<div class="empty-card">No announcement preview available yet.</div>`}
-      </div>
-    </article>
-  `;
-}
-
-function pageHeaderMarkup(eyebrow, title, description, actionsMarkup = "", detailMarkup = "") {
-  return `
-    <section class="content-header glass-card page-view-header">
-      <div class="content-heading">
-        <p class="eyebrow">${escapeHtml(eyebrow)}</p>
-        <h2>${escapeHtml(title)}</h2>
-        <p>${escapeHtml(description)}</p>
-      </div>
-      <div class="content-meta">
-        ${actionsMarkup ? `<div class="content-shortcuts">${actionsMarkup}</div>` : ""}
-        ${detailMarkup ? `<p class="search-hint">${detailMarkup}</p>` : ""}
-      </div>
-    </section>
-  `;
-}
-
-function csvEscape(value) {
-  const text = String(value ?? "");
-  return `"${text.replace(/"/g, '""')}"`;
-}
-
-function buildCsv(rows, columns) {
-  const header = columns.map((column) => csvEscape(column.label)).join(",");
-  const lines = rows.map((row) =>
-    columns.map((column) => csvEscape(column.resolve(row))).join(","),
-  );
-  return [header, ...lines].join("\r\n");
-}
-
-function triggerCsvDownload(filename, csvText) {
-  const blob = new Blob([`\uFEFF${csvText}`], { type: "text/csv;charset=utf-8;" });
-  const downloadUrl = URL.createObjectURL(blob);
-  const link = document.createElement("a");
-  link.href = downloadUrl;
-  link.download = filename;
-  document.body.appendChild(link);
-  link.click();
-  link.remove();
-  window.setTimeout(() => URL.revokeObjectURL(downloadUrl), 0);
-}
-
-function formatTimeForEditor(value) {
-  const raw = String(value || "").trim();
-  if (!raw) return "";
-
-  const [hoursText = "0", minutesText = "0"] = raw.split(":");
+function toTimeLabel(timeValue) {
+  const [hoursText = "0", minutesText = "0"] = String(
+    timeValue || "00:00:00",
+  ).split(":");
   const hours = Number(hoursText);
   const minutes = Number(minutesText);
-
-  if (Number.isNaN(hours) || Number.isNaN(minutes)) {
-    return raw;
-  }
-
   const suffix = hours >= 12 ? "PM" : "AM";
   const twelveHour = hours % 12 === 0 ? 12 : hours % 12;
   return `${String(twelveHour).padStart(2, "0")}:${String(minutes).padStart(2, "0")} ${suffix}`;
 }
 
-function normalizeScheduleTimeInput(value) {
-  const raw = String(value || "").trim().toUpperCase();
-  if (!raw) return null;
-
-  const twelveHourMatch = /^(\d{1,2}):(\d{2})\s*(AM|PM)$/.exec(raw);
-  if (twelveHourMatch) {
-    let hours = Number(twelveHourMatch[1]);
-    const minutes = Number(twelveHourMatch[2]);
-    const suffix = twelveHourMatch[3];
-
-    if (
-      Number.isNaN(hours) ||
-      Number.isNaN(minutes) ||
-      hours < 1 ||
-      hours > 12 ||
-      minutes < 0 ||
-      minutes > 59
-    ) {
-      return null;
-    }
-
-    if (suffix === "AM") {
-      hours = hours === 12 ? 0 : hours;
-    } else {
-      hours = hours === 12 ? 12 : hours + 12;
-    }
-
-    return `${String(hours).padStart(2, "0")}:${String(minutes).padStart(2, "0")}:00`;
+function formatTimestampToAppDateTime(value) {
+  if (!value) {
+    return null;
   }
 
-  const twentyFourHourMatch = /^(\d{1,2}):(\d{2})$/.exec(raw);
-  if (twentyFourHourMatch) {
-    const hours = Number(twentyFourHourMatch[1]);
-    const minutes = Number(twentyFourHourMatch[2]);
+  const parsed =
+    value instanceof Date ? value : new Date(String(value).replace(" ", "T"));
 
-    if (
-      Number.isNaN(hours) ||
-      Number.isNaN(minutes) ||
-      hours < 0 ||
-      hours > 23 ||
-      minutes < 0 ||
-      minutes > 59
-    ) {
-      return null;
+  if (Number.isNaN(parsed.getTime())) {
+    return String(value).replace("T", " ").slice(0, 19);
+  }
+
+  return getZonedNowParts(parsed).dateTime;
+}
+
+function buildMealWindow(windowRow) {
+  return {
+    mealCode: windowRow.mealCode || windowRow.meal_code,
+    mealName: windowRow.mealName || windowRow.meal_name,
+    startTime: String(windowRow.startTime || windowRow.start_time),
+    endTime: String(windowRow.endTime || windowRow.end_time),
+    sortOrder: Number(windowRow.sortOrder || windowRow.sort_order || 0),
+    timeLabel: `${toTimeLabel(windowRow.startTime || windowRow.start_time)} - ${toTimeLabel(windowRow.endTime || windowRow.end_time)}`,
+  };
+}
+
+function getActiveMeal(mealWindows, totalMinutes) {
+  const orderedWindows = [...mealWindows].sort(
+    (a, b) => a.sortOrder - b.sortOrder,
+  );
+
+  for (const window of orderedWindows) {
+    const startMinutes = parseTimeToMinutes(window.startTime);
+    const endMinutes = parseTimeToMinutes(window.endTime);
+    const wrapsPastMidnight = endMinutes < startMinutes;
+
+    const isActive = wrapsPastMidnight
+      ? totalMinutes >= startMinutes || totalMinutes <= endMinutes
+      : totalMinutes >= startMinutes && totalMinutes <= endMinutes;
+
+    if (isActive) {
+      return {
+        isActive: true,
+        mealCode: window.mealCode,
+        mealName: window.mealName,
+        startTime: window.startTime,
+        endTime: window.endTime,
+        timeLabel: window.timeLabel,
+      };
     }
+  }
 
-    return `${String(hours).padStart(2, "0")}:${String(minutes).padStart(2, "0")}:00`;
+  const futureWindows = orderedWindows
+    .map((window) => ({
+      ...window,
+      startMinutes: parseTimeToMinutes(window.startTime),
+    }))
+    .filter((window) => window.startMinutes > totalMinutes)
+    .sort((a, b) => a.startMinutes - b.startMinutes);
+
+  const nextMeal = futureWindows[0] || orderedWindows[0] || null;
+
+  return {
+    isActive: false,
+    mealCode: nextMeal ? nextMeal.mealCode : null,
+    mealName: nextMeal ? nextMeal.mealName : null,
+    startTime: nextMeal ? nextMeal.startTime : null,
+    endTime: nextMeal ? nextMeal.endTime : null,
+    timeLabel: nextMeal ? nextMeal.timeLabel : null,
+  };
+}
+
+function sanitizeCouponType(value) {
+  const lowerValue = String(value || "").trim().toLowerCase();
+
+  if (lowerValue === "economy") {
+    return "Economy";
+  }
+
+  if (
+    lowerValue === "coupon" ||
+    lowerValue === "food stall coupon" ||
+    lowerValue === "food stall"
+  ) {
+    return "Coupon";
   }
 
   return null;
 }
 
-function mealWindowRows(windows) {
-  return windows
-    .map(
-      (window) => {
-        const startDraft = state.scheduleDrafts[`${window.mealCode}_start`];
-        const endDraft = state.scheduleDrafts[`${window.mealCode}_end`];
+function createCouponCode() {
+  return `DCMS-${crypto.randomBytes(2).toString("hex").toUpperCase()}`;
+}
 
-        return `
-        <div class="meal-row">
-          <div>
-            <strong>${escapeHtml(window.mealName)}</strong>
-            <p>${escapeHtml(window.mealCode)}</p>
-          </div>
-          <label>
-            <span>Start</span>
-            <input
-              type="text"
-              inputmode="numeric"
-              name="${escapeHtml(window.mealCode)}_start"
-              value="${escapeHtml(startDraft ?? formatTimeForEditor(window.startTime))}"
-              placeholder="07:00 AM"
-            />
-          </label>
-          <label>
-            <span>End</span>
-            <input
-              type="text"
-              inputmode="numeric"
-              name="${escapeHtml(window.mealCode)}_end"
-              value="${escapeHtml(endDraft ?? formatTimeForEditor(window.endTime))}"
-              placeholder="10:00 PM"
-            />
-          </label>
-        </div>
-      `;
-      },
+function mapCouponRedemptionRow(row) {
+  const normalizedAddOns = normalizeCouponAddOns(
+    row.addOnsRaw ?? row.addOnsJson ?? row.addOns ?? row.add_ons,
+  );
+  return {
+    ...row,
+    addOns: normalizedAddOns,
+    add_ons: normalizedAddOns,
+  };
+}
+
+function getCouponAddOnsSelectSql(alias = "addOnsRaw") {
+  if (couponRedemptionsHasAddOns && couponRedemptionsHasLegacyAddOnsJson) {
+    return `COALESCE(CAST(add_ons AS CHAR), add_ons_json) AS ${alias}`;
+  }
+
+  if (couponRedemptionsHasAddOns) {
+    return `CAST(add_ons AS CHAR) AS ${alias}`;
+  }
+
+  if (couponRedemptionsHasLegacyAddOnsJson) {
+    return `add_ons_json AS ${alias}`;
+  }
+
+  return `NULL AS ${alias}`;
+}
+
+function getCouponAddOnsColumnSelectSql(alias = "storedAddOnsRaw") {
+  if (couponRedemptionsHasAddOns) {
+    return `CAST(add_ons AS CHAR) AS ${alias}`;
+  }
+
+  return `NULL AS ${alias}`;
+}
+
+function getCouponLegacyAddOnsJsonSelectSql(alias = "storedAddOnsJson") {
+  if (couponRedemptionsHasLegacyAddOnsJson) {
+    return `add_ons_json AS ${alias}`;
+  }
+
+  return `NULL AS ${alias}`;
+}
+
+function buildCouponAddOnsInsertColumns(couponType, normalizedAddOns) {
+  if (couponType !== "Economy") {
+    return {
+      columns: [],
+      placeholders: [],
+      values: [],
+    };
+  }
+
+  const serializedAddOns = JSON.stringify(normalizedAddOns);
+  const columns = [];
+  const placeholders = [];
+  const values = [];
+
+  if (couponRedemptionsHasAddOns) {
+    columns.push("add_ons");
+    placeholders.push("?");
+    values.push(serializedAddOns);
+  }
+
+  if (couponRedemptionsHasLegacyAddOnsJson) {
+    columns.push("add_ons_json");
+    placeholders.push("?");
+    values.push(serializedAddOns);
+  }
+
+  return {
+    columns,
+    placeholders,
+    values,
+  };
+}
+
+function createSignedToken(payload, secret, prefix) {
+  const encoded = Buffer.from(JSON.stringify(payload)).toString("base64url");
+  const signature = crypto
+    .createHmac("sha256", secret)
+    .update(encoded)
+    .digest("hex");
+  return `${prefix}.${encoded}.${signature}`;
+}
+
+function verifySignedToken(token, secret, prefix) {
+  const [tokenPrefix, encoded, signature] = String(token || "").split(".");
+  if (!tokenPrefix || !encoded || !signature || tokenPrefix !== prefix) {
+    return null;
+  }
+
+  const expectedSignature = crypto
+    .createHmac("sha256", secret)
+    .update(encoded)
+    .digest("hex");
+
+  if (expectedSignature !== signature) {
+    return null;
+  }
+
+  try {
+    return JSON.parse(Buffer.from(encoded, "base64url").toString("utf8"));
+  } catch (_error) {
+    return null;
+  }
+}
+
+async function initialisePortalTables() {
+  await query(`
+    CREATE TABLE IF NOT EXISTS users (
+      student_id VARCHAR(50) PRIMARY KEY,
+      password VARCHAR(100) NOT NULL,
+      student_name VARCHAR(120) NOT NULL,
+      credit_balance DECIMAL(10, 2) DEFAULT 0.00,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     )
-    .join("");
-}
+  `);
 
-function menuEditors(menus) {
-  return menus
-    .map(
-      (menu) => `
-        <label class="menu-editor">
-          <div class="section-row">
-            <strong>${escapeHtml(menu.mealName)}</strong>
-            <span>${escapeHtml(menu.timeLabel || "")}</span>
-          </div>
-          <textarea name="${escapeHtml(menu.mealCode)}_items" rows="5" placeholder="One menu item per line">${escapeHtml((menu.items || []).join("\n"))}</textarea>
-        </label>
-      `,
+  await query(`
+    CREATE TABLE IF NOT EXISTS meal_windows (
+      meal_code VARCHAR(30) PRIMARY KEY,
+      meal_name VARCHAR(50) NOT NULL,
+      start_time TIME NOT NULL,
+      end_time TIME NOT NULL,
+      sort_order INT NOT NULL
     )
-    .join("");
-}
+  `);
 
-function newsCards(news) {
-  if (!news.length) {
-    return `<div class="empty-card">No news announcements have been published yet.</div>`;
-  }
-
-  return news
-    .map(
-      (item) => `
-        <article class="news-card glass-card">
-          <div class="section-row">
-            <div>
-              <span class="news-badge">${escapeHtml(item.category || "General")}</span>
-              <h4>${escapeHtml(item.title)}</h4>
-            </div>
-            <div class="news-actions">
-              <button type="button" class="secondary-button" data-edit-news="${item.id}">Edit</button>
-              <button type="button" class="danger-button" data-delete-news="${item.id}">Delete</button>
-            </div>
-          </div>
-          <p>${escapeHtml(item.body)}</p>
-          <div class="news-meta">
-            <span>Status: ${escapeHtml(item.status)}</span>
-            <span>Priority: ${escapeHtml(item.priority)}</span>
-            <span>Publish: ${escapeHtml(formatDateTime(item.publishAt))}</span>
-          </div>
-        </article>
-      `,
+  await query(`
+    CREATE TABLE IF NOT EXISTS daily_menus (
+      id INT AUTO_INCREMENT PRIMARY KEY,
+      menu_date DATE NOT NULL,
+      meal_code VARCHAR(30) NOT NULL,
+      items_json TEXT NOT NULL,
+      updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+      UNIQUE KEY unique_menu_per_day (menu_date, meal_code)
     )
-    .join("");
-}
+  `);
 
-function redemptionsMarkup(redemptions) {
-  if (!redemptions.length) {
-    return `<div class="empty-card">No coupon activity has been recorded today.</div>`;
-  }
+  await query(`
+    CREATE TABLE IF NOT EXISTS news_posts (
+      id INT AUTO_INCREMENT PRIMARY KEY,
+      title VARCHAR(180) NOT NULL,
+      body TEXT NOT NULL,
+      category VARCHAR(50) DEFAULT 'General',
+      status VARCHAR(20) DEFAULT 'published',
+      priority INT DEFAULT 0,
+      publish_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      expires_at DATETIME NULL,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+    )
+  `);
 
-  return `
-    <div class="table-shell">
-      <table>
-        <thead>
-          <tr>
-            <th>Student</th>
-            <th>Coupon</th>
-            <th>Add-ons</th>
-            <th>Meal</th>
-            <th>Status</th>
-            <th>Issued</th>
-          </tr>
-        </thead>
-        <tbody>
-          ${redemptions
-            .map(
-              (item) => `
-                <tr>
-                  <td>${escapeHtml(item.studentId)}</td>
-                  <td>${escapeHtml(item.couponType)}</td>
-                  <td>${escapeHtml(formatCouponAddOns(item.addOns ?? item.add_ons))}</td>
-                  <td>${escapeHtml(item.mealCode)}</td>
-                  <td><span class="table-pill ${escapeHtml(item.status)}">${escapeHtml(item.status)}</span></td>
-                  <td>${escapeHtml(formatDateTime(item.issuedAt))}</td>
-                </tr>
-              `,
-            )
-            .join("")}
-        </tbody>
-      </table>
-    </div>
-  `;
-}
+  await query(`
+    CREATE TABLE IF NOT EXISTS coupon_redemptions (
+      id INT AUTO_INCREMENT PRIMARY KEY,
+      coupon_code VARCHAR(20) NULL,
+      student_id VARCHAR(50) NOT NULL,
+      coupon_type VARCHAR(30) NOT NULL,
+      meal_code VARCHAR(30) NOT NULL,
+      add_ons JSON NULL,
+      token TEXT NOT NULL,
+      token_signature VARCHAR(64) NOT NULL,
+      issued_at DATETIME NOT NULL,
+      expires_at DATETIME NOT NULL,
+      redeemed_at DATETIME NULL,
+      redeemed_by VARCHAR(120) NULL,
+      status VARCHAR(20) DEFAULT 'issued',
+      UNIQUE KEY unique_token_signature (token_signature)
+    )
+  `);
 
-function heroMetricMarkup(label, value, detail, modifier = "", accentMarkup = "") {
-  return `
-    <article class="hero-metric-card glass-card ${modifier}">
-      <div class="hero-metric-label-row">
-        <span>${escapeHtml(label)}</span>
-        <span class="metric-arrow">></span>
-      </div>
-      <strong>${escapeHtml(value)}</strong>
-      <p>${escapeHtml(detail)}</p>
-      ${accentMarkup}
-    </article>
-  `;
-}
+  await query(`
+    ALTER TABLE coupon_redemptions
+    ADD COLUMN IF NOT EXISTS coupon_code VARCHAR(20) NULL
+  `).catch(() => {});
 
-function formatCompactNumber(value) {
-  return new Intl.NumberFormat("en", { notation: "compact", maximumFractionDigits: 1 }).format(Number(value || 0));
-}
+  await query(`
+    ALTER TABLE coupon_redemptions
+    ADD UNIQUE KEY IF NOT EXISTS unique_coupon_code (coupon_code)
+  `).catch(() => {});
 
-function formatShortDay(value) {
-  if (typeof timeUtils.formatMalaysiaShortDay === "function") {
-    return timeUtils.formatMalaysiaShortDay(value, { emptyLabel: value || "" });
-  }
+  await query(`
+    ALTER TABLE coupon_redemptions
+    ADD COLUMN IF NOT EXISTS add_ons JSON NULL
+  `).catch(() => {});
 
-  if (!value) return "";
-  const parsed = new Date(`${value}T00:00:00`);
-  if (Number.isNaN(parsed.getTime())) return value;
-  return parsed.toLocaleDateString("en-US", { weekday: "short" });
-}
+  await query(`
+    ALTER TABLE coupon_redemptions
+    ADD COLUMN IF NOT EXISTS add_ons_json TEXT NULL
+  `).catch(() => {});
 
-function snapshotItemMarkup(label, value, detail) {
-  return `
-    <div class="snapshot-item">
-      <span>${escapeHtml(label)}</span>
-      <strong>${escapeHtml(value)}</strong>
-      <small>${escapeHtml(detail)}</small>
-    </div>
-  `;
-}
+  const couponRedemptionColumns = await query(
+    `
+      SELECT column_name AS columnName
+      FROM information_schema.columns
+      WHERE table_schema = DATABASE()
+        AND table_name = 'coupon_redemptions'
+        AND column_name IN ('add_ons', 'add_ons_json')
+    `,
+  ).catch(() => []);
 
-function summaryKpiMarkup(label, value, detail, modifier = "") {
-  return `
-    <article class="glass-card summary-kpi-card ${modifier}">
-      <span>${escapeHtml(label)}</span>
-      <strong>${escapeHtml(value)}</strong>
-      <small>${escapeHtml(detail)}</small>
-    </article>
-  `;
-}
-
-function barChartRowsMarkup(items, emptyMessage, valueSuffix = "") {
-  if (!items.length) {
-    return `<div class="empty-card">${escapeHtml(emptyMessage)}</div>`;
-  }
-
-  const maxValue = Math.max(1, ...items.map((item) => Number(item.total || item.value || 0)));
-
-  return `
-    <div class="bar-chart-list">
-      ${items
-        .map((item, index) => {
-          const total = Number(item.total || item.value || 0);
-          const width = Math.max(total > 0 ? 12 : 0, (total / maxValue) * 100);
-          return `
-            <div class="bar-chart-row">
-              <div class="bar-chart-labels">
-                <strong>${escapeHtml(item.label || item.mealName || item.couponType || "Item")}</strong>
-                <span>${escapeHtml(item.detail || "Today")}</span>
-              </div>
-              <div class="bar-chart-track">
-                <span class="bar-chart-fill bar-chart-fill--${(index % 4) + 1}" style="width:${width}%"></span>
-              </div>
-              <strong class="bar-chart-value">${escapeHtml(`${total}${valueSuffix}`)}</strong>
-            </div>
-          `;
-        })
-        .join("")}
-    </div>
-  `;
-}
-
-function studentTrendChartMarkup(weeklyTrend) {
-  const trend = weeklyTrend.length
-    ? weeklyTrend
-    : Array.from({ length: 7 }, (_, index) => ({
-        activityDate: `Day ${index + 1}`,
-        couponsIssued: 0,
-        studentsServed: 0,
-      }));
-  const maxValue = Math.max(
-    1,
-    ...trend.flatMap((item) => [Number(item.couponsIssued || 0), Number(item.studentsServed || 0)]),
+  const availableCouponRedemptionColumns = new Set(
+    couponRedemptionColumns.map((column) => String(column.columnName || "")),
   );
 
-  return `
-    <div class="trend-chart-shell">
-      <div class="trend-chart-bars">
-        ${trend
-          .map((item) => {
-            const issuedHeight = Math.max(item.couponsIssued ? 14 : 8, (Number(item.couponsIssued || 0) / maxValue) * 100);
-            const studentsHeight = Math.max(item.studentsServed ? 14 : 8, (Number(item.studentsServed || 0) / maxValue) * 100);
-            return `
-              <div class="trend-bar-group">
-                <div class="trend-bar-stack">
-                  <span class="trend-bar trend-bar--issued" style="height:${issuedHeight}%"></span>
-                  <span class="trend-bar trend-bar--students" style="height:${studentsHeight}%"></span>
-                </div>
-                <strong>${escapeHtml(formatShortDay(item.activityDate))}</strong>
-              </div>
-            `;
-          })
-          .join("")}
-      </div>
-      <div class="trend-legend">
-        <span><i class="legend-swatch legend-swatch--issued"></i>Coupons issued</span>
-        <span><i class="legend-swatch legend-swatch--students"></i>Students served</span>
-      </div>
-    </div>
-  `;
-}
+  couponRedemptionsHasAddOns =
+    availableCouponRedemptionColumns.size === 0 ||
+    availableCouponRedemptionColumns.has("add_ons");
+  couponRedemptionsHasLegacyAddOnsJson = availableCouponRedemptionColumns.has(
+    "add_ons_json",
+  );
 
-function serviceSnapshotMarkup(activeMeal, serverStamp, stats, mealWindows) {
-  const nextWindow = !activeMeal.isActive
-    ? mealWindows.find((window) => window.mealCode === activeMeal.mealCode)
-    : null;
-
-  return `
-    <article class="glass-card cafeteria-snapshot-card">
-      <div class="section-row compact">
-        <div>
-          <p class="eyebrow">Service snapshot</p>
-          <h3>${escapeHtml(activeMeal.isActive ? `${activeMeal.mealName} is live` : "Cafeteria service closed")}</h3>
-        </div>
-        <span class="service-badge ${activeMeal.isActive ? "live" : "waiting"}">${escapeHtml(activeMeal.isActive ? "Open now" : "Waiting")}</span>
-      </div>
-      <p class="panel-copy">
-        ${escapeHtml(
-          activeMeal.isActive
-            ? `${activeMeal.timeLabel} is active, so students can generate and redeem valid coupons right now.`
-            : nextWindow
-              ? `Next window is ${nextWindow.mealName} (${nextWindow.timeLabel}). Staff can prepare the counter QR and menu before service starts.`
-              : "No cafeteria window is active yet. Keep meal hours and menu ready before the next session begins.",
-        )}
-      </p>
-      <div class="snapshot-grid">
-        ${snapshotItemMarkup("Server time", serverStamp || "Unavailable", "Live backend time")}
-        ${snapshotItemMarkup("Menus ready", String(stats.menusConfigured || 0), "Meals published today")}
-        ${snapshotItemMarkup("News live", String(stats.publishedNews || 0), "Visible in the app")}
-      </div>
-    </article>
-  `;
-}
-
-function redemptionMiniListMarkup(redemptions) {
-  if (!redemptions.length) {
-    return `<div class="empty-card">Student coupon records will appear here after the first issue or redemption today.</div>`;
-  }
-
-  return `
-    <div class="activity-mini-list">
-      ${redemptions
-        .slice(0, 5)
-        .map(
-          (item) => `
-            <div class="activity-mini-item">
-              <div>
-                <strong>${escapeHtml(item.studentId)}</strong>
-                <span>${escapeHtml(`${item.couponType} Â· ${item.mealCode}`)}</span>
-              </div>
-              <small>${escapeHtml(formatRelativeTime(item.issuedAt))}</small>
-            </div>
-          `,
-        )
-        .join("")}
-    </div>
-  `;
-}
-
-function workflowTimelineMarkup(activeMeal, stats) {
-  const activeIndex = activeMeal.isActive
-    ? 3
-    : (stats.menusConfigured || 0) > 0
-      ? 2
-      : 0;
-
-  const steps = [
-    "Hours Set",
-    "QR Generated",
-    "Menu Published",
-    "Window Open",
-    "Window Closed",
+  const defaultMealWindows = [
+    ["breakfast", "Breakfast", "07:00:00", "10:30:00", 1],
+    ["lunch", "Lunch", "12:00:00", "15:00:00", 2],
+    ["dinner", "Dinner", "18:00:00", "22:00:00", 3],
   ];
 
-  return `
-    <section class="glass-card workflow-panel">
-      <div class="section-row compact workflow-header">
-        <div>
-          <p class="eyebrow">Service readiness</p>
-          <h3>Meal Window Workflow Timeline</h3>
-        </div>
-        <span class="workflow-chip">Current step</span>
-      </div>
-      <div class="workflow-line">
-        ${steps
-          .map((step, index) => `
-            <div class="workflow-step ${index <= activeIndex ? "is-complete" : ""} ${index === activeIndex ? "is-current" : ""}">
-              <span class="workflow-dot"></span>
-              <strong>${escapeHtml(step)}</strong>
-            </div>
-          `)
-          .join("")}
-      </div>
-    </section>
-  `;
-}
-
-function menuBarsMarkup(menus) {
-  const safeMenus = menus.map((menu) => ({
-    label: menu.mealName || "Meal",
-    value: (menu.items || []).length,
-  }));
-  const maxValue = Math.max(1, ...safeMenus.map((item) => item.value));
-
-  return `
-    <div class="mini-bars">
-      ${safeMenus
-        .map((item, index) => `
-          <div class="mini-bar-item">
-            <span
-              class="mini-bar-fill mini-bar-fill--${index + 1}"
-              style="height:${Math.max(18, (item.value / maxValue) * 86)}px"
-            ></span>
-            <strong>${escapeHtml(String(item.value))}</strong>
-            <small>${escapeHtml(item.label)}</small>
-          </div>
-        `)
-        .join("")}
-    </div>
-  `;
-}
-
-function activityFeedMarkup(news, redemptions) {
-  const operations = [
-    ...news.slice(0, 2).map((item) => ({
-      icon: "N",
-      tone: "news",
-      title: `${item.title || "Announcement"} published`,
-      meta: formatRelativeTime(item.publishAt),
-    })),
-    ...redemptions.slice(0, 3).map((item) => ({
-      icon: "Q",
-      tone: "qr",
-      title: `${item.studentId || "Student"} issued ${item.couponType || "coupon"}`,
-      meta: formatRelativeTime(item.issuedAt),
-    })),
-  ].slice(0, 5);
-
-  if (!operations.length) {
-    return `<div class="empty-card">Recent admin actions will appear here after menu, news, and QR activity starts.</div>`;
-  }
-
-  return `
-    <div class="activity-feed">
-      ${operations
-        .map((item) => `
-          <div class="activity-item">
-            <span class="activity-icon activity-icon--${escapeHtml(item.tone)}">${escapeHtml(item.icon)}</span>
-            <div class="activity-copy">
-              <strong>${escapeHtml(item.title)}</strong>
-              <span>${escapeHtml(item.meta)}</span>
-            </div>
-          </div>
-        `)
-        .join("")}
-    </div>
-  `;
-}
-
-function normalizeRecordCouponType(value) {
-  const normalized = String(value || "").trim().toLowerCase();
-  if (normalized === "economy") return "economy";
-  if (normalized === "coupon") return "coupon";
-  return normalized;
-}
-
-function dashboardMarkup() {
-  if (state.loading && (!state.dashboard || !state.content)) {
-    return `
-      <section class="loading-shell glass-card">
-        <div class="loader-ring"></div>
-        <p>Loading control room...</p>
-      </section>
-    `;
-  }
-
-  const dashboard = state.dashboard || {};
-  const content = state.content || {};
-  const stats = dashboard.stats || {};
-  const activeMeal = dashboard.activeMeal || {};
-  const menus = content.menus || [];
-  const mealWindows = content.mealWindows || [];
-  const news = content.news || [];
-  const redemptions = state.currentPage === "activity"
-    ? (state.activityRedemptions || [])
-    : (dashboard.recentRedemptions || []);
-  const analytics = dashboard.analytics || {};
-  const computerNow = getComputerNow();
-  const computerStamp = formatDateTime(computerNow);
-  const computerDate = formatDateOnly(computerNow);
-  const liveMealLabel = activeMeal.isActive ? activeMeal.mealName : "No active meal window";
-  const liveMealDetail = activeMeal.timeLabel || "Waiting for next service window";
-  const apiBaseLabel = state.apiBaseUrl || "Not configured";
-  const registeredStudents = Number(stats.registeredStudents || analytics.registeredStudents || 0);
-  const activeStudentsToday = Number(stats.activeStudentsToday || analytics.activeStudentsToday || 0);
-  const fullRedemptionHistory = state.activityRedemptions || [];
-  const economyFoodCouponsIssuedToday = fullRedemptionHistory.filter(
-    (item) => normalizeRecordCouponType(item.couponType) === "economy",
-  ).length;
-  const mealCouponsIssuedToday = fullRedemptionHistory.filter(
-    (item) => normalizeRecordCouponType(item.couponType) === "coupon",
-  ).length;
-  const mealBreakdown = (analytics.mealBreakdown || mealWindows.map((window) => ({
-    mealName: window.mealName,
-    total: 0,
-  }))).map((item) => ({
-    label: item.mealName || item.label,
-    detail: "Coupons issued",
-    total: Number(item.total || 0),
-  }));
-  const couponBreakdown = (analytics.couponBreakdown || [
-    { couponType: "Economy", total: 0 },
-    { couponType: "Coupon", total: 0 },
-  ]).map((item) => ({
-    label: item.couponType === "Coupon" ? "Food stall coupon" : item.couponType,
-    detail: "Today's requests",
-    total: Number(item.total || 0),
-  }));
-  const weeklyTrend = analytics.weeklyTrend || [];
-  state.currentPage = getCurrentPageKey();
-  const currentSection = WORKSPACE_SECTIONS.find((section) => section.key === state.currentPage) || WORKSPACE_SECTIONS[0];
-  const dashboardPage = `
-    <section class="control-room-overview cafeteria-overview">
-      <section class="overview-intro-card glass-card">
-        <div>
-          <p class="eyebrow">Dashboard</p>
-          <h2>DCMS cafeteria management</h2>
-          <p class="panel-copy">Track student demand, meal readiness, and coupon activity in one place without extra dashboard clutter.</p>
-        </div>
-        <div class="overview-intro-meta">
-          <span class="overview-meta-pill">${escapeHtml(computerDate)}</span>
-          <span class="overview-meta-pill">${escapeHtml(activeMeal.isActive ? `${activeMeal.mealName} live` : "No live meal")}</span>
-        </div>
-      </section>
-
-      <section class="overview-kpi-grid">
-        ${summaryKpiMarkup("Economy food coupon issued", formatCompactNumber(economyFoodCouponsIssuedToday), "Issued from the student app records", "summary-kpi-card--served")}
-        ${summaryKpiMarkup("Meal coupon", formatCompactNumber(mealCouponsIssuedToday), "Issued from the student app records", "summary-kpi-card--issued")}
-      </section>
-
-      <section class="dashboard-chart-grid">
-        ${serviceSnapshotMarkup(activeMeal, computerStamp, stats, mealWindows)}
-
-        <article class="glass-card chart-card">
-          <div class="section-row compact">
-            <div>
-              <p class="eyebrow">Meal demand</p>
-              <h3>Today by meal window</h3>
-            </div>
-          </div>
-          <p class="panel-copy">See which cafeteria session is attracting the most coupon requests today.</p>
-          ${barChartRowsMarkup(mealBreakdown, "Meal demand will appear after students begin generating coupons.")}
-        </article>
-      </section>
-
-      <section class="dashboard-chart-grid dashboard-chart-grid--wide">
-        <article class="glass-card chart-card chart-card--wide">
-          <div class="section-row compact">
-            <div>
-              <p class="eyebrow">Student traffic</p>
-              <h3>Seven-day app activity</h3>
-            </div>
-          </div>
-          <p class="panel-copy">Compare total coupons issued versus distinct students served across the last seven days.</p>
-          ${studentTrendChartMarkup(weeklyTrend)}
-        </article>
-
-        <article class="glass-card chart-card">
-          <div class="section-row compact">
-            <div>
-              <p class="eyebrow">Coupon mix</p>
-              <h3>Economy vs food stall</h3>
-            </div>
-          </div>
-          <p class="panel-copy">Monitor which coupon type students prefer today so service can prepare correctly.</p>
-          ${barChartRowsMarkup(couponBreakdown, "Coupon type demand will appear after the first student request.")}
-        </article>
-      </section>
-
-      ${workflowTimelineMarkup(activeMeal, stats)}
-    </section>
-  `;
-  const servicePage = `
-    ${pageHeaderMarkup(
-      "Service operations",
-      "Meal Hours",
-      "This page focuses only on cafeteria operating hours so staff can prepare service without extra distractions.",
-      `<button type="button" class="secondary-button" id="saveScheduleButton">Save Hours</button>`,
-      `Computer time: ${escapeHtml(computerStamp || "Unavailable")}`,
-    )}
-    <section class="module-section">
-      <div class="content-grid content-grid--single">
-        ${appImpactCardMarkup(
-          "Meal windows and coupon flow",
-            "These settings affect the student app coupon timing and cafeteria operations.",
-            "Students can only generate meal coupons inside active meal windows, and staff validate those tokens against the same live backend.",
-            [
-              { label: "Active meal", value: liveMealLabel },
-              { label: "Meal window", value: liveMealDetail },
-            { label: "App surface", value: "Home tab + coupon generation" },
-          ],
-        )}
-      </div>
-      <div class="content-grid">
-        <article class="glass-card panel-card">
-          <div class="section-row">
-            <div>
-              <p class="eyebrow">Schedule</p>
-              <h3>Meal windows</h3>
-            </div>
-          </div>
-          <p class="panel-copy">Update these hours carefully because they affect live student coupon generation.</p>
-          <form id="scheduleForm" class="stacked-form">
-            ${mealWindowRows(mealWindows)}
-          </form>
-          <div class="panel-actions">
-            <button type="button" class="secondary-button" id="saveScheduleButtonInline">Save Hours</button>
-          </div>
-        </article>
-        <article class="glass-card panel-card">
-          <div class="section-row">
-            <div>
-              <p class="eyebrow">Counter</p>
-              <h3>Meal window status</h3>
-            </div>
-          </div>
-          <p class="panel-copy">Coupon collection no longer uses QR scanning. Staff only need the live meal window and active coupon list.</p>
-          <div class="empty-card">Current meal: ${escapeHtml(activeMeal.mealName || "No active meal")}<br/>Window: ${escapeHtml(activeMeal.timeLabel || "Waiting for next session")}</div>
-        </article>
-      </div>
-    </section>
-  `;
-  const menuPage = `
-    ${pageHeaderMarkup(
-      "Student content",
-      "Daily Menu",
-      "This page is only for today's menu. Publish clean meal items here without mixing them with news tasks.",
-      `<button type="button" class="secondary-button" id="saveMenusButton">Publish Menu</button>`,
-      `Student app reads these items from the shared backend after refresh.`,
-    )}
-    <section class="module-section">
-      <div class="content-grid content-grid--sidebar">
-        <article class="glass-card panel-card">
-          <div class="section-row">
-            <div>
-              <p class="eyebrow">Menu board</p>
-              <h3>Today's menu</h3>
-            </div>
-          </div>
-          <form id="menuForm" class="stacked-form">
-            ${menuEditors(menus)}
-          </form>
-        </article>
-        <div class="page-aside">
-          ${appImpactCardMarkup(
-            "Menu tab sync",
-            "Everything saved here appears in the student app menu tab for today's date.",
-            "Students see breakfast, lunch, and dinner items directly from this backend payload after their app refreshes or reopens.",
-            [
-              { label: "Date", value: computerDate || "Today" },
-              { label: "Menus ready", value: String(stats.menusConfigured || 0) },
-              { label: "App tab", value: "Menu" },
-            ],
-          )}
-          ${menuPreviewMarkup(menus)}
-        </div>
-      </div>
-    </section>
-  `;
-  const newsPage = `
-    ${pageHeaderMarkup(
-      "Broadcast centre",
-      "Notices",
-      "Use this page to write, schedule, edit, and review student-facing announcements in one place.",
-      `<button type="button" class="secondary-button" id="resetNewsFormButton">Clear Form</button>`,
-      `Published news will appear in the app when its publish time is reached.`,
-    )}
-    <section class="module-section">
-      <section class="news-layout">
-        <article class="glass-card panel-card">
-          <div class="section-row">
-            <div>
-              <p class="eyebrow">Composer</p>
-              <h3>Announcement editor</h3>
-            </div>
-          </div>
-          <form id="newsForm" class="stacked-form">
-            <input type="hidden" name="newsId" value="" />
-            <div class="dual-field-grid">
-              <label>
-                <span>Title</span>
-                <input type="text" name="title" placeholder="Announcement title" required />
-              </label>
-              <label>
-                <span>Category</span>
-                <select name="category">
-                  <option value="General">General</option>
-                  <option value="Operations">Operations</option>
-                  <option value="System">System</option>
-                  <option value="Promotion">Promotion</option>
-                </select>
-              </label>
-            </div>
-            <div class="dual-field-grid">
-              <label>
-                <span>Status</span>
-                <select name="status">
-                  <option value="published">Published</option>
-                  <option value="draft">Draft</option>
-                </select>
-              </label>
-              <label>
-                <span>Priority</span>
-                <input type="number" name="priority" min="0" max="10" value="0" />
-              </label>
-            </div>
-            <div class="dual-field-grid">
-              <label>
-                <span>Publish date</span>
-                <input type="date" name="publishAt" />
-              </label>
-              <label>
-                <span>Expire date</span>
-                <input type="date" name="expiresAt" />
-              </label>
-            </div>
-            <label>
-              <span>Message</span>
-              <textarea name="body" rows="6" placeholder="Write the cafeteria announcement here" required></textarea>
-            </label>
-            <button type="submit" class="primary-button">Save News</button>
-          </form>
-        </article>
-        <article class="news-column">
-          ${appImpactCardMarkup(
-            "News feed sync",
-            "This page controls what students read in the app news feed.",
-            "Only published items whose publish time has started are visible to students. Draft items stay hidden until you publish them.",
-            [
-              { label: "Published", value: String(stats.publishedNews || 0) },
-              { label: "App tab", value: "News" },
-              { label: "Visibility", value: "Published + time reached" },
-            ],
-          )}
-          ${newsPreviewMarkup(news)}
-          ${newsCards(news)}
-        </article>
-      </section>
-    </section>
-  `;
-  const activityPage = `
-    ${pageHeaderMarkup(
-      "Audit trail",
-      "Student Records",
-      "This page keeps the full coupon history so staff can review, retain, and export student records over time.",
+  for (const mealWindow of defaultMealWindows) {
+    await query(
       `
-        <div class="section-row compact">
-          <button type="button" class="secondary-button" id="exportStudentRecordsWeeklyButton">Weekly CSV</button>
-          <button type="button" class="secondary-button" id="exportStudentRecordsMonthlyButton">Monthly CSV</button>
-          <button type="button" class="secondary-button" id="exportStudentRecordsButton">Full CSV</button>
-        </div>
+        INSERT INTO meal_windows (meal_code, meal_name, start_time, end_time, sort_order)
+        VALUES (?, ?, ?, ?, ?)
+        ON DUPLICATE KEY UPDATE
+          meal_name = VALUES(meal_name),
+          start_time = VALUES(start_time),
+          end_time = VALUES(end_time),
+          sort_order = VALUES(sort_order)
       `,
-      `Stored records stay available for review and CSV export.`,
-    )}
-    <section class="module-section">
-      <div class="content-grid content-grid--sidebar">
-        <article class="glass-card panel-card">
-          ${redemptionsMarkup(redemptions)}
-        </article>
-        <div class="page-aside">
-          ${appImpactCardMarkup(
-            "App coupon activity",
-            "This log reflects coupon activity generated from the student app.",
-            "Use this page to confirm whether the student app flow is working for issuance.",
-            [
-              { label: "Issued", value: String(stats.qrIssuedToday || 0) },
-              { label: "App coupon flow", value: "App coupon flow" },
-            ],
-          )}
-        </div>
-      </div>
-    </section>
-  `;
-  const pageMarkupBySection = {
-    overview: dashboardPage,
-    service: servicePage,
-    menu: menuPage,
-    news: newsPage,
-    activity: activityPage,
-  };
-  return `
-    <div class="dashboard-shell">
-      <button class="sidebar-overlay ${state.sidebarOpen ? "is-open" : ""}" id="sidebarOverlay" type="button" aria-label="Close navigation"></button>
-      <aside class="dashboard-sidebar ${state.sidebarOpen ? "is-open" : ""}">
-        <div class="dashboard-brand glass-card">
-          <div class="brand-mark">DC</div>
-          <div class="dashboard-brand-copy">
-            <strong>${escapeHtml(config.portalName || "AIMST DCMS Control Room")}</strong>
-            <span>Hostel cafeteria administration</span>
-          </div>
-        </div>
-
-        <div class="dashboard-sidebar-panel glass-card">
-          <div class="dashboard-nav-group">
-            <span class="dashboard-nav-label">Overview</span>
-            ${WORKSPACE_SECTIONS.slice(0, 3).map(section => navLinkMarkup(section)).join('')}
-          </div>
-
-          <div class="dashboard-nav-group">
-            <span class="dashboard-nav-label">Operations</span>
-            ${WORKSPACE_SECTIONS.slice(3).map(section => navLinkMarkup(section)).join('')}
-          </div>
-        </div>
-
-        <div class="dashboard-sidebar-panel glass-card dashboard-status-card">
-          ${detailItemMarkup("API base", apiBaseLabel)}
-          ${detailItemMarkup("Computer time", computerStamp)}
-          ${detailItemMarkup("Current meal", liveMealLabel)}
-          ${detailItemMarkup("Meal window", liveMealDetail)}
-        </div>
-      </aside>
-
-      <div class="dashboard-stage">
-        <header class="dashboard-toolbar glass-card">
-          <div class="toolbar-leading">
-            <button class="toolbar-icon-button" id="toggleSidebarButton" type="button" aria-label="Open navigation menu">
-              <span class="hamburger-icon" aria-hidden="true">
-                <span></span>
-                <span></span>
-                <span></span>
-              </span>
-            </button>
-            <div class="toolbar-context">
-              <span class="toolbar-context-label">Cafeteria management</span>
-              <strong>${escapeHtml(currentSection.label)}</strong>
-              <small>${escapeHtml(currentSection.detail)}</small>
-            </div>
-          </div>
-          <form class="toolbar-search-shell" id="toolbarSearchForm">
-            <input
-              class="toolbar-search-input"
-              id="toolbarSearchInput"
-              type="search"
-              name="workspaceQuery"
-              placeholder="Search menu, notices, records"
-              value="${escapeHtml(state.workspaceQuery)}"
-            />
-            <button class="toolbar-search-button" type="submit">Go</button>
-          </form>
-          <div class="toolbar-actions">
-            <span class="toolbar-status-pill">${escapeHtml(computerDate || "Today")}</span>
-            <button class="secondary-button toolbar-button" id="refreshDashboardButton" type="button">Refresh</button>
-            <div class="profile-menu">
-              <button class="profile-chip profile-chip-button" id="profileMenuButton" type="button" aria-haspopup="menu" aria-expanded="${state.profileMenuOpen ? "true" : "false"}">
-                <div class="profile-avatar">A</div>
-                <div class="profile-info">
-                  <strong>Admin</strong>
-                  <span>Cafeteria session</span>
-                </div>
-                <span class="profile-caret" aria-hidden="true"></span>
-              </button>
-              <div class="profile-dropdown" role="menu" aria-label="Admin menu">
-                <div class="profile-dropdown-header">
-                  <strong>Administrator</strong>
-                  <span>${escapeHtml(config.portalName || "AIMST DCMS Control Room")}</span>
-                </div>
-                <button class="profile-dropdown-item danger" id="dashboardLogoutButton" type="button" role="menuitem">Log Out</button>
-              </div>
-            </div>
-          </div>
-        </header>
-
-        <main class="dashboard-content">
-          ${pageMarkupBySection[state.currentPage] || dashboardPage}
-        </main>
-      </div>
-    </div>
-  `;
-}
-
-function render() {
-  if (logoutButton) {
-    logoutButton.classList.add("hidden");
-  }
-
-  if (shellTopbar) {
-    shellTopbar.classList.toggle("hidden", Boolean(state.token));
-  }
-  if (pageShell) {
-    pageShell.classList.toggle("dashboard-mode", Boolean(state.token));
-  }
-  appRoot.innerHTML = state.token ? dashboardMarkup() : loginMarkup();
-  bindEvents();
-  syncProfileMenu();
-}
-
-function bindEvents() {
-  const loginForm = document.getElementById("loginForm");
-  if (loginForm) {
-    loginForm.addEventListener("submit", (event) => {
-      event.preventDefault();
-      const formData = new FormData(loginForm);
-      login(formData.get("username"), formData.get("password"));
-    });
-  }
-
-  logoutButton.onclick = logout;
-  const profileMenuButton = document.getElementById("profileMenuButton");
-  if (profileMenuButton) {
-    profileMenuButton.addEventListener("mousedown", (event) => {
-      event.stopPropagation();
-      setProfileMenuOpen(!state.profileMenuOpen);
-    });
-  }
-
-  const toolbarSearchForm = document.getElementById("toolbarSearchForm");
-  if (toolbarSearchForm) {
-    toolbarSearchForm.addEventListener("submit", (event) => {
-      event.preventDefault();
-      const query = new FormData(toolbarSearchForm).get("workspaceQuery");
-      state.workspaceQuery = String(query || "");
-      const matchedSection = resolveWorkspaceSection(state.workspaceQuery);
-      if (matchedSection) {
-        window.location.href = pageUrl(matchedSection.key);
-        return;
-      }
-      showFlash("No matching section found for that search", "info");
-    });
-  }
-
-  const dashboardLogoutButton = document.getElementById("dashboardLogoutButton");
-  if (dashboardLogoutButton) {
-    dashboardLogoutButton.addEventListener("click", (event) => {
-      event.stopPropagation();
-      logout();
-    });
-  }
-
-  document.removeEventListener("click", handleDocumentClick);
-  document.addEventListener("click", handleDocumentClick);
-
-  const toggleSidebarButton = document.getElementById("toggleSidebarButton");
-  if (toggleSidebarButton) {
-    toggleSidebarButton.addEventListener("click", () => {
-      setProfileMenuOpen(false);
-      state.sidebarOpen = !state.sidebarOpen;
-      render();
-    });
-  }
-
-  document.querySelectorAll(".dashboard-nav-link").forEach((link) => {
-    link.addEventListener("click", () => {
-      state.sidebarOpen = false;
-    });
-  });
-
-  const sidebarOverlay = document.getElementById("sidebarOverlay");
-  if (sidebarOverlay) {
-    sidebarOverlay.addEventListener("click", () => {
-      state.sidebarOpen = false;
-      render();
-    });
-  }
-
-  const refreshButton = document.getElementById("refreshDashboardButton");
-  if (refreshButton) {
-    refreshButton.addEventListener("click", () => {
-      setProfileMenuOpen(false);
-      loadDashboard();
-    });
-  }
-
-  const saveScheduleButton = document.getElementById("saveScheduleButton");
-  if (saveScheduleButton) {
-    saveScheduleButton.addEventListener("click", saveSchedule);
-  }
-
-  const saveScheduleButtonInline = document.getElementById("saveScheduleButtonInline");
-  if (saveScheduleButtonInline) {
-    saveScheduleButtonInline.addEventListener("click", saveSchedule);
-  }
-
-  const scheduleForm = document.getElementById("scheduleForm");
-  if (scheduleForm) {
-    scheduleForm.querySelectorAll("input").forEach((input) => {
-      input.addEventListener("input", () => {
-        state.scheduleDrafts[input.name] = input.value;
-      });
-    });
-  }
-
-  const saveMenusButton = document.getElementById("saveMenusButton");
-  if (saveMenusButton) {
-    saveMenusButton.addEventListener("click", saveMenus);
-  }
-
-  const newsForm = document.getElementById("newsForm");
-  if (newsForm) {
-    newsForm.addEventListener("submit", saveNews);
-  }
-
-  const resetNewsFormButton = document.getElementById("resetNewsFormButton");
-  if (resetNewsFormButton) {
-    resetNewsFormButton.addEventListener("click", resetNewsForm);
-  }
-
-  document.querySelectorAll("[data-edit-news]").forEach((button) => {
-    button.addEventListener("click", () => editNews(button.dataset.editNews));
-  });
-
-  document.querySelectorAll("[data-delete-news]").forEach((button) => {
-    button.addEventListener("click", () => deleteNews(button.dataset.deleteNews));
-  });
-
-  const exportStudentRecordsButton = document.getElementById("exportStudentRecordsButton");
-  if (exportStudentRecordsButton) {
-    exportStudentRecordsButton.addEventListener("click", () => exportStudentRecordsCsv("full"));
-  }
-
-  const exportStudentRecordsWeeklyButton = document.getElementById("exportStudentRecordsWeeklyButton");
-  if (exportStudentRecordsWeeklyButton) {
-    exportStudentRecordsWeeklyButton.addEventListener("click", () => exportStudentRecordsCsv("weekly"));
-  }
-
-  const exportStudentRecordsMonthlyButton = document.getElementById("exportStudentRecordsMonthlyButton");
-  if (exportStudentRecordsMonthlyButton) {
-    exportStudentRecordsMonthlyButton.addEventListener("click", () => exportStudentRecordsCsv("monthly"));
-  }
-}
-
-function getStudentRecordExportAnchorDate() {
-  return getComputerNow();
-}
-
-function filterStudentRecordsForExport(redemptions, scope) {
-  if (scope === "full") {
-    return redemptions;
-  }
-
-  const anchorDate = getStudentRecordExportAnchorDate();
-
-  if (scope === "monthly") {
-    const month = anchorDate.getMonth();
-    const year = anchorDate.getFullYear();
-    return redemptions.filter((row) => {
-      const issuedAt = parseDisplayDateTime(row.issuedAt);
-      return issuedAt &&
-        issuedAt.getMonth() === month &&
-        issuedAt.getFullYear() === year;
-    });
-  }
-
-  if (scope === "weekly") {
-    const weekStart = new Date(anchorDate);
-    weekStart.setHours(0, 0, 0, 0);
-    weekStart.setDate(anchorDate.getDate() - 6);
-
-    const weekEnd = new Date(anchorDate);
-    weekEnd.setHours(23, 59, 59, 999);
-
-    return redemptions.filter((row) => {
-      const issuedAt = parseDisplayDateTime(row.issuedAt);
-      return issuedAt && issuedAt >= weekStart && issuedAt <= weekEnd;
-    });
-  }
-
-  return redemptions;
-}
-
-async function exportStudentRecordsCsv(scope = "full") {
-  try {
-    const redemptions = await api("/admin/redemptions?limit=5000");
-    const filteredRedemptions = filterStudentRecordsForExport(redemptions, scope);
-
-    if (!Array.isArray(filteredRedemptions) || !filteredRedemptions.length) {
-      showFlash("No student records found for export.", "info");
-      return;
-    }
-
-    const csvText = buildCsv(filteredRedemptions, [
-      { label: "Record ID", resolve: (row) => row.id },
-      { label: "Student ID", resolve: (row) => row.studentId },
-      { label: "Coupon Code", resolve: (row) => row.couponCode },
-      { label: "Coupon Type", resolve: (row) => row.couponType },
-      {
-        label: "Add-ons",
-        resolve: (row) =>
-          formatCouponAddOns(row.addOns ?? row.add_ons, {
-            separator: "; ",
-          }),
-      },
-      { label: "Meal Code", resolve: (row) => row.mealCode },
-      { label: "Status", resolve: (row) => row.status },
-      { label: "Issued At (MYT)", resolve: (row) => formatDateTime(row.issuedAt) },
-      { label: "Expires At (MYT)", resolve: (row) => formatDateTime(row.expiresAt) },
-      { label: "Redeemed At (MYT)", resolve: (row) => formatDateTime(row.redeemedAt) },
-      { label: "Redeemed By", resolve: (row) => row.redeemedBy },
-    ]);
-
-    const fileNames = {
-      full: "student-records-history.csv",
-      weekly: "student-records-weekly.csv",
-      monthly: "student-records-monthly.csv",
-    };
-
-    const successMessages = {
-      full: "Full student records exported as CSV for Excel.",
-      weekly: "Weekly student records exported as CSV for Excel.",
-      monthly: "Monthly student records exported as CSV for Excel.",
-    };
-
-    triggerCsvDownload(fileNames[scope] || fileNames.full, csvText);
-    showFlash(successMessages[scope] || successMessages.full, "success");
-  } catch (error) {
-    showFlash(error.message || "Unable to export student records.", "danger");
-  }
-}
-
-async function saveSchedule() {
-  const mealWindows = state.content?.mealWindows || [];
-  const form = document.getElementById("scheduleForm");
-  if (!form) return;
-
-  const payload = [];
-
-  for (const [index, window] of mealWindows.entries()) {
-    const startTime = normalizeScheduleTimeInput(
-      form.elements[`${window.mealCode}_start`].value,
+      mealWindow,
     );
-    const endTime = normalizeScheduleTimeInput(
-      form.elements[`${window.mealCode}_end`].value,
-    );
-
-    if (!startTime || !endTime) {
-      showFlash(
-        `Use a valid time for ${window.mealName}. Example: 07:00 AM or 19:00`,
-        "danger",
-      );
-      return;
-    }
-
-    payload.push({
-      mealCode: window.mealCode,
-      mealName: window.mealName,
-      startTime,
-      endTime,
-      sortOrder: index + 1,
-    });
   }
 
-  try {
-    await api("/admin/meal-windows", {
-      method: "PUT",
-      body: { mealWindows: payload },
-    });
-    state.scheduleDrafts = {};
-    showFlash("Meal windows updated", "success");
-    await loadDashboard();
-  } catch (error) {
-    showFlash(error.message || "Unable to save schedule", "danger");
+  const now = getZonedNowParts();
+  const defaultMenus = [
+    [
+      "breakfast",
+      ["Nasi Lemak", "Roti Canai", "Toast & Jam", "Coffee or Teh Tarik"],
+    ],
+    [
+      "lunch",
+      [
+        "Chicken Rice",
+        "Mixed Rice (15+ dishes)",
+        "Vegetarian Set",
+        "Seasonal Fruits",
+      ],
+    ],
+    [
+      "dinner",
+      ["Fried Noodles", "Soup Special", "Grilled Chicken", "Fresh Juices"],
+    ],
+  ];
+
+  for (const [mealCode, menuItems] of defaultMenus) {
+    await query(
+      `
+        INSERT IGNORE INTO daily_menus (menu_date, meal_code, items_json)
+        VALUES (?, ?, ?)
+      `,
+      [now.date, mealCode, JSON.stringify(menuItems)],
+    );
+  }
+
+  const existingNewsRows = await query(
+    "SELECT COUNT(*) AS total FROM news_posts",
+  );
+  if (Number(existingNewsRows[0]?.total || 0) === 0) {
+    await query(
+      `
+        INSERT INTO news_posts (title, body, category, status, priority, publish_at)
+        VALUES
+          (?, ?, ?, 'published', 2, ?),
+          (?, ?, ?, 'published', 1, ?)
+      `,
+      [
+        "Welcome to the digital cafeteria system",
+        "Admin announcements that you publish from the dashboard will appear in the mobile app automatically.",
+        "System",
+        now.dateTime,
+        "Counter service reminder",
+        "Students can redeem breakfast, lunch, or dinner coupons only during the configured meal windows.",
+        "Operations",
+        now.dateTime,
+      ],
+    );
   }
 }
 
-async function saveMenus() {
-  const menus = state.content?.menus || [];
-  const form = document.getElementById("menuForm");
-  if (!form) return;
+async function getMealWindows() {
+  const rows = await query(`
+    SELECT
+      meal_code AS mealCode,
+      meal_name AS mealName,
+      start_time AS startTime,
+      end_time AS endTime,
+      sort_order AS sortOrder
+    FROM meal_windows
+    ORDER BY sort_order ASC
+  `);
 
-  const payload = menus.map((menu) => ({
-    mealCode: menu.mealCode,
-    items: form.elements[`${menu.mealCode}_items`].value
-      .split("\n")
-      .map((item) => item.trim())
-      .filter(Boolean),
+  return rows.map(buildMealWindow);
+}
+
+async function getMenusForDate(menuDate) {
+  const rows = await query(
+    `
+      SELECT
+        mw.meal_code AS mealCode,
+        mw.meal_name AS mealName,
+        mw.start_time AS startTime,
+        mw.end_time AS endTime,
+        mw.sort_order AS sortOrder,
+        dm.items_json AS itemsJson,
+        dm.updated_at AS updatedAt
+      FROM meal_windows mw
+      LEFT JOIN daily_menus dm
+        ON dm.meal_code = mw.meal_code
+       AND dm.menu_date = ?
+      ORDER BY mw.sort_order ASC
+    `,
+    [menuDate],
+  );
+
+  return rows.map((row) => ({
+    ...buildMealWindow(row),
+    items: row.itemsJson ? JSON.parse(row.itemsJson) : [],
+    updatedAt: row.updatedAt || null,
   }));
+}
 
-  try {
-    await api("/admin/menus/today", {
-      method: "PUT",
-      body: { menus: payload },
-    });
-    showFlash("Today's menu published to the app", "success");
-    await loadDashboard();
-  } catch (error) {
-    showFlash(error.message || "Unable to save menu", "danger");
+async function getPublishedNews(nowDateTime) {
+  const rows = await query(
+    `
+      SELECT
+        id,
+        title,
+        body,
+        category,
+        status,
+        priority,
+        DATE_FORMAT(publish_at, '%Y-%m-%d %H:%i:%s') AS publishAt,
+        CASE
+          WHEN expires_at IS NULL THEN NULL
+          ELSE DATE_FORMAT(expires_at, '%Y-%m-%d %H:%i:%s')
+        END AS expiresAt,
+        created_at AS createdAt,
+        updated_at AS updatedAt
+      FROM news_posts
+      WHERE status = 'published'
+        AND publish_at <= ?
+        AND (expires_at IS NULL OR expires_at >= ?)
+      ORDER BY priority DESC, publish_at DESC, created_at DESC
+      LIMIT 20
+    `,
+    [nowDateTime, nowDateTime],
+  );
+
+  return rows.map((row) => ({
+    ...row,
+    createdAt: formatTimestampToAppDateTime(row.createdAt),
+    updatedAt: formatTimestampToAppDateTime(row.updatedAt),
+  }));
+}
+
+async function getAllNews() {
+  const rows = await query(
+    `
+      SELECT
+        id,
+        title,
+        body,
+        category,
+        status,
+        priority,
+        DATE_FORMAT(publish_at, '%Y-%m-%d %H:%i:%s') AS publishAt,
+        CASE
+          WHEN expires_at IS NULL THEN NULL
+          ELSE DATE_FORMAT(expires_at, '%Y-%m-%d %H:%i:%s')
+        END AS expiresAt,
+        created_at AS createdAt,
+        updated_at AS updatedAt
+      FROM news_posts
+      ORDER BY publish_at DESC, created_at DESC
+      LIMIT 50
+    `,
+  );
+
+  return rows.map((row) => ({
+    ...row,
+    createdAt: formatTimestampToAppDateTime(row.createdAt),
+    updatedAt: formatTimestampToAppDateTime(row.updatedAt),
+  }));
+}
+
+async function getRecentRedemptions(selectedDate = null, limit = 20) {
+  const normalizedLimit = Math.max(1, Math.min(Number(limit) || 20, 5000));
+  const sql = `
+      SELECT
+        id,
+        coupon_code AS couponCode,
+        student_id AS studentId,
+        coupon_type AS couponType,
+        meal_code AS mealCode,
+        ${getCouponAddOnsSelectSql("addOnsRaw")},
+        issued_at AS issuedAt,
+        expires_at AS expiresAt,
+        redeemed_at AS redeemedAt,
+      redeemed_by AS redeemedBy,
+      status
+    FROM coupon_redemptions
+    ${selectedDate ? "WHERE DATE(issued_at) = ?" : ""}
+    ORDER BY COALESCE(redeemed_at, issued_at) DESC
+    LIMIT ?
+  `;
+
+  const params = selectedDate
+    ? [selectedDate, normalizedLimit]
+    : [normalizedLimit];
+
+  const rows = await query(sql, params);
+  return rows.map(mapCouponRedemptionRow);
+}
+
+async function getLatestCouponsForStudentCode(studentId, mealCode = null, date = null) {
+  let sql = `
+      SELECT
+        id,
+        coupon_code AS couponCode,
+        student_id AS studentId,
+        coupon_type AS couponType,
+        meal_code AS mealCode,
+        ${getCouponAddOnsSelectSql("addOnsRaw")},
+        issued_at AS issuedAt,
+        expires_at AS expiresAt,
+        redeemed_at AS redeemedAt,
+        redeemed_by AS redeemedBy,
+        status
+      FROM coupon_redemptions
+      WHERE student_id = ?
+  `;
+  const params = [studentId];
+
+  if (date) {
+    sql += " AND DATE(issued_at) = ? ";
+    params.push(date);
   }
+
+  if (mealCode) {
+    sql += " AND meal_code = ? ";
+    params.push(mealCode);
+  }
+
+  sql += " ORDER BY issued_at DESC ";
+
+  const rows = (await query(sql, params)).map(mapCouponRedemptionRow);
+
+  if (!rows.length) {
+    return [];
+  }
+
+  const latestByType = new Map();
+  const now = getZonedNowParts().dateTime;
+
+  for (const row of rows) {
+    const key = String(row.couponType || "");
+    if (!key || latestByType.has(key)) {
+      continue;
+    }
+
+    const expiresAt = new Date(row.expiresAt);
+    const serverNow = new Date(getZonedNowParts().dateTime);
+
+    if (row.status === "issued" && expiresAt < serverNow) {
+      await query(
+        "UPDATE coupon_redemptions SET status = 'expired' WHERE id = ?",
+        [row.id],
+      );
+      row.status = "expired";
+    }
+
+    latestByType.set(key, row);
+  }
+
+  return Array.from(latestByType.values());
 }
 
-function resetNewsForm() {
-  const form = document.getElementById("newsForm");
-  if (!form) return;
-  form.reset();
-  form.elements.newsId.value = "";
+function normalizeCouponStatus(value) {
+  const status = String(value || "").toLowerCase();
+  if (status === "issued") {
+    return "ACTIVE";
+  }
+  if (status === "redeemed") {
+    return "REDEEMED";
+  }
+  if (status === "expired") {
+    return "EXPIRED";
+  }
+  return String(value || "").toUpperCase();
 }
 
-function editNews(newsId) {
-  const item = (state.content?.news || []).find((news) => String(news.id) === String(newsId));
-  const form = document.getElementById("newsForm");
-  if (!item || !form) return;
+async function getStudentCoupons(studentId) {
+  const rows = await query(
+    `
+      SELECT
+        id,
+        coupon_code AS couponCode,
+        student_id AS studentId,
+        coupon_type AS couponType,
+        meal_code AS mealCode,
+        ${getCouponAddOnsSelectSql("addOnsRaw")},
+        issued_at AS issuedAt,
+        expires_at AS expiresAt,
+        redeemed_at AS redeemedAt,
+        redeemed_by AS redeemedBy,
+        status
+      FROM coupon_redemptions
+      WHERE student_id = ?
+      ORDER BY issued_at DESC
+      LIMIT 20
+    `,
+    [studentId],
+  );
 
-  form.elements.newsId.value = item.id;
-  form.elements.title.value = item.title || "";
-  form.elements.category.value = item.category || "General";
-  form.elements.status.value = item.status || "published";
-  form.elements.priority.value = item.priority || 0;
-  form.elements.publishAt.value = toDateOnly(item.publishAt);
-  form.elements.expiresAt.value = toDateOnly(item.expiresAt);
-  form.elements.body.value = item.body || "";
-  showFlash("Editing news post", "info");
-  form.scrollIntoView({ behavior: "smooth", block: "center" });
+  const serverNow = new Date(getZonedNowParts().dateTime);
+  const normalizedCoupons = [];
+
+  for (const row of rows) {
+    const expiresAt = new Date(row.expiresAt);
+    if (row.status === "issued" && expiresAt < serverNow) {
+      await query(
+        "UPDATE coupon_redemptions SET status = 'expired' WHERE id = ?",
+        [row.id],
+      );
+      row.status = "expired";
+    }
+
+    normalizedCoupons.push({
+      ...mapCouponRedemptionRow(row),
+      status: normalizeCouponStatus(row.status),
+    });
+  }
+
+  return normalizedCoupons;
 }
 
-async function saveNews(event) {
-  event.preventDefault();
-  const formData = new FormData(event.currentTarget);
-  const newsId = formData.get("newsId");
-  const payload = {
-    title: formData.get("title"),
-    body: formData.get("body"),
-    category: formData.get("category"),
-    status: formData.get("status"),
-    priority: Number(formData.get("priority") || 0),
-    publishAt: formData.get("publishAt")
-      ? `${String(formData.get("publishAt"))} 00:00:00`
-      : null,
-    expiresAt: formData.get("expiresAt")
-      ? `${String(formData.get("expiresAt"))} 23:59:59`
-      : null,
+async function getStudentCouponByCode(couponCode) {
+  const rows = await query(
+    `
+      SELECT
+        id,
+        coupon_code AS couponCode,
+        student_id AS studentId,
+        coupon_type AS couponType,
+        meal_code AS mealCode,
+        ${getCouponAddOnsSelectSql("addOnsRaw")},
+        issued_at AS issuedAt,
+        expires_at AS expiresAt,
+        redeemed_at AS redeemedAt,
+        redeemed_by AS redeemedBy,
+        status
+      FROM coupon_redemptions
+      WHERE coupon_code = ?
+      LIMIT 1
+    `,
+    [couponCode],
+  );
+
+  const row = rows[0];
+  if (!row) {
+    return null;
+  }
+
+  const expiresAt = new Date(row.expiresAt);
+  const serverNow = new Date(getZonedNowParts().dateTime);
+
+  if (row.status === "issued" && expiresAt < serverNow) {
+    await query("UPDATE coupon_redemptions SET status = 'expired' WHERE id = ?", [
+      row.id,
+    ]);
+    row.status = "expired";
+  }
+
+  return {
+    ...mapCouponRedemptionRow(row),
+    status: normalizeCouponStatus(row.status),
   };
+}
 
-  try {
-    await api(newsId ? `/admin/news/${newsId}` : "/admin/news", {
-      method: newsId ? "PUT" : "POST",
-      body: payload,
+async function buildAppPayload(studentId) {
+  const now = getZonedNowParts();
+  const mealWindows = await getMealWindows();
+  const activeMeal = getActiveMeal(mealWindows, now.totalMinutes);
+
+  const [menus, news, studentCoupons] = await Promise.all([
+    getMenusForDate(now.date),
+    getPublishedNews(now.dateTime),
+    getStudentCoupons(studentId),
+  ]);
+
+  // Logic for daily refresh and meal window persistence:
+  // 1. If a meal is active, we ONLY show coupons issued for THIS SPECIFIC meal today.
+  // 2. If no meal is active, we show the latest coupons issued today (to show last used status).
+  // 3. We NEVER show coupons from previous days on the Home tab.
+  const latestCoupons = await getLatestCouponsForStudentCode(
+    studentId,
+    activeMeal.isActive ? activeMeal.mealCode : null,
+    now.date,
+  );
+
+  const users = await query(
+    `
+      SELECT
+        student_id AS studentId,
+        student_name AS studentName,
+        credit_balance AS creditBalance
+      FROM users
+      WHERE student_id = ?
+      LIMIT 1
+    `,
+    [studentId],
+  );
+
+  return {
+    timeZone: APP_TIME_ZONE,
+    serverDate: now.date,
+    serverTime: now.time,
+    couponTtlMinutes: COUPON_TOKEN_TTL_MINUTES,
+    activeMeal,
+    mealWindows,
+    menus,
+    news,
+    user: users[0] || null,
+    latestCoupons,
+    availableCoupons: studentCoupons.filter((coupon) => coupon.status === "ACTIVE"),
+    usedCoupons: studentCoupons.filter(
+      (coupon) => coupon.status === "REDEEMED" || coupon.status === "EXPIRED",
+    ),
+    couponHistory: studentCoupons,
+  };
+}
+
+function authenticateAdmin(req, res, next) {
+  const authHeader = req.headers.authorization || "";
+
+  if (!authHeader.startsWith("Bearer ")) {
+    res
+      .status(401)
+      .json({ status: "error", message: "Admin authorization required" });
+    return;
+  }
+
+  const token = authHeader.replace("Bearer ", "").trim();
+  const payload = verifySignedToken(token, ADMIN_TOKEN_SECRET, "dcms-admin");
+
+  if (!payload || payload.exp < Date.now()) {
+    res
+      .status(401)
+      .json({ status: "error", message: "Admin session expired or invalid" });
+    return;
+  }
+
+  req.admin = payload;
+  next();
+}
+
+function createApp() {
+  const app = express();
+
+  app.use(cors());
+  app.use(bodyParser.json());
+  app.use(
+    express.static(path.resolve(__dirname, "../../../dcms_admin_portal")),
+  );
+
+  initialisePortalTables().catch((error) => {
+    console.error("Portal bootstrap error:", error.message);
+  });
+
+  app.get("/health", async (_req, res, next) => {
+    try {
+      await ping();
+      await expireCoupons();
+      const now = getZonedNowParts();
+      const mealWindows = await getMealWindows();
+      res.json({
+        status: "success",
+        data: {
+          database: "connected",
+          serverDate: now.date,
+          serverTime: now.time,
+          timeZone: APP_TIME_ZONE,
+          activeMeal: getActiveMeal(mealWindows, now.totalMinutes),
+        },
+      });
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  app.post("/login", async (req, res, next) => {
+    const { studentId, password } = req.body;
+
+    try {
+      const student = await getStudentById(studentId);
+      if (!student) {
+        throw new AppError(401, "Invalid credentials");
+      }
+
+      const rows = await query(
+        "SELECT student_id, student_name, credit_balance FROM users WHERE student_id = ? AND password = ? LIMIT 1",
+        [studentId, password],
+      );
+
+      if (!rows.length) {
+        throw new AppError(401, "Invalid credentials");
+      }
+
+      res.json({
+        status: "success",
+        data: rows[0],
+      });
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  app.post("/register", async (req, res, next) => {
+    const { studentId, password, studentName } = req.body;
+
+    try {
+      if (!studentId || !password) {
+        throw new AppError(400, "Student ID and password are required.");
+      }
+
+      const existing = await query(
+        "SELECT student_id FROM users WHERE student_id = ? LIMIT 1",
+        [studentId],
+      );
+      if (existing.length) {
+        throw new AppError(409, "Student ID already registered.");
+      }
+
+      await query(
+        `
+          INSERT INTO users (student_id, password, student_name, credit_balance)
+          VALUES (?, ?, ?, ?)
+        `,
+        [studentId, password, studentName || "New Student", 0],
+      );
+
+      res.status(201).json({
+        status: "success",
+        message: "User registered successfully",
+      });
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  app.get("/user/:studentId", async (req, res, next) => {
+    try {
+      const student = await getStudentById(req.params.studentId);
+      if (!student) {
+        throw new AppError(404, "User not found.");
+      }
+
+      res.json({
+        status: "success",
+        data: student,
+      });
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  app.get("/app/content/:studentId", async (req, res, next) => {
+    try {
+      const payload = await buildAppPayload(req.params.studentId);
+      if (!payload.user) {
+        throw new AppError(404, "User not found");
+      }
+      res.json({ status: "success", data: payload });
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  app.get("/menus/today", async (_req, res, next) => {
+    try {
+      const now = getZonedNowParts();
+      const menus = await getMenusForDate(now.date);
+      res.json({ status: "success", data: { date: now.date, menus } });
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  app.get("/news", async (_req, res, next) => {
+    try {
+      const now = getZonedNowParts();
+      const news = await getPublishedNews(now.dateTime);
+      res.json({ status: "success", data: news });
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  app.post("/coupons/issue", async (req, res) => {
+  console.log("FULL BODY:", JSON.stringify(req.body));
+  console.log("ADD ONS RAW:", req.body?.addOns);
+
+  // existing route code continues here
+
+    const { studentId, couponType } = req.body;
+    const addOns = req.body.addOns ?? req.body.add_ons ?? req.body.addons;
+    const normalizedCouponType = sanitizeCouponType(couponType);
+    const normalizedAddOns = normalizeCouponAddOns(addOns);
+
+    console.log("LIVE ADDONS ROUTE HIT");
+    console.log("REQUEST METHOD:", req.method);
+    console.log("REQUEST PATH:", req.originalUrl);
+    console.log("REQUEST BODY:", JSON.stringify(req.body));
+    console.log(
+      "RAW ADDONS:",
+      req.body?.addOns ?? req.body?.add_ons ?? req.body?.addons,
+    );
+    console.log("NORMALIZED ADDONS:", normalizedAddOns);
+    console.log("SQL ADDONS VALUE:", JSON.stringify(normalizedAddOns));
+
+    try {
+      if (!studentId || !normalizedCouponType) {
+        throw new AppError(
+          400,
+          "Student ID and a valid coupon type are required",
+        );
+      }
+
+      if (normalizedCouponType === "Economy" && !normalizedAddOns.length) {
+        throw new AppError(
+          400,
+          "Please select at least one add-on option.",
+        );
+      }
+
+      const now = getZonedNowParts();
+      const mealWindows = await getMealWindows();
+      const activeMeal = getActiveMeal(mealWindows, now.totalMinutes);
+
+      if (!activeMeal.isActive) {
+        throw new AppError(
+          400,
+          "Coupons can only be generated during cafeteria operating hours",
+        );
+      }
+
+      const students = await query(
+        "SELECT student_id FROM users WHERE student_id = ? LIMIT 1",
+        [studentId],
+      );
+      if (!students.length) {
+        throw new AppError(404, "Student not found");
+      }
+
+      const existingMealCoupons = await query(
+        `
+          SELECT
+            coupon_type AS couponType,
+            status,
+            coupon_code AS couponCode,
+            expires_at AS expiresAt
+          FROM coupon_redemptions
+          WHERE student_id = ?
+            AND meal_code = ?
+            AND DATE(issued_at) = ?
+            AND status IN ('issued', 'redeemed', 'expired')
+          ORDER BY issued_at DESC
+        `,
+        [studentId, activeMeal.mealCode, now.date],
+      );
+
+      const liveMealCoupons = [];
+      for (const coupon of existingMealCoupons) {
+        const expiresAt = new Date(coupon.expiresAt);
+        const serverNow = new Date(now.dateTime);
+
+        if (coupon.status === "issued" && serverNow > expiresAt) {
+          await query(
+            "UPDATE coupon_redemptions SET status = 'expired' WHERE coupon_code = ?",
+            [coupon.couponCode],
+          );
+          coupon.status = "expired";
+        }
+
+        if (coupon.status !== "expired") {
+          liveMealCoupons.push(coupon);
+        }
+      }
+
+      if (liveMealCoupons.length) {
+        const chosenCoupon = liveMealCoupons[0];
+        if (chosenCoupon.couponType !== normalizedCouponType) {
+          throw new AppError(
+            409,
+            `You already selected the ${String(chosenCoupon.couponType || "").toLowerCase()} option for ${activeMeal.mealName.toLowerCase()}. Only one coupon option can be used per meal window.`,
+          );
+        }
+      }
+
+      const existingRows = await query(
+        `
+          SELECT status, coupon_code AS couponCode, expires_at AS expiresAt
+          FROM coupon_redemptions
+          WHERE student_id = ?
+            AND coupon_type = ?
+            AND meal_code = ?
+            AND DATE(issued_at) = ?
+            AND status IN ('issued', 'redeemed', 'expired')
+          LIMIT 1
+        `,
+        [studentId, normalizedCouponType, activeMeal.mealCode, now.date],
+      );
+
+      if (existingRows.length) {
+        const existing = existingRows[0];
+        const expiresAt = new Date(existing.expiresAt);
+        const serverNow = new Date(now.dateTime);
+
+        if (existing.status === "issued" && serverNow > expiresAt) {
+          await query(
+            "UPDATE coupon_redemptions SET status = 'expired' WHERE coupon_code = ?",
+            [existing.couponCode],
+          );
+        } else {
+        const message =
+          existing.status === "redeemed"
+            ? `This ${activeMeal.mealName.toLowerCase()} ${normalizedCouponType.toLowerCase()} has already been redeemed today`
+            : existing.status === "expired"
+              ? `The previous ${normalizedCouponType.toLowerCase()} coupon already expired. Please contact cafeteria staff if reissue is needed.`
+              : `This ${activeMeal.mealName.toLowerCase()} ${normalizedCouponType.toLowerCase()} coupon has already been issued today`;
+        throw new AppError(409, message);
+        }
+      }
+
+      const issuedAtDate = new Date();
+      const ttlExpiresAtDate = new Date(
+        issuedAtDate.getTime() + COUPON_TOKEN_TTL_MINUTES * 60 * 1000,
+      );
+
+      let finalExpiresAtDate = ttlExpiresAtDate;
+      if (activeMeal && activeMeal.endTime) {
+        try {
+          const [endH, endM] = activeMeal.endTime.split(":");
+          const windowEndDate = new Date(issuedAtDate);
+          windowEndDate.setHours(parseInt(endH, 10), parseInt(endM, 10), 0, 0);
+
+          if (windowEndDate > issuedAtDate && windowEndDate < ttlExpiresAtDate) {
+            finalExpiresAtDate = windowEndDate;
+          }
+        } catch (e) {
+          console.error("Error capping expiry by meal window:", e);
+        }
+      }
+
+      const issuedAtParts = getZonedNowParts(issuedAtDate);
+      const expiresAtParts = getZonedNowParts(finalExpiresAtDate);
+
+      let couponCode = createCouponCode();
+      let duplicateFound = true;
+      for (let attempt = 0; attempt < 10; attempt += 1) {
+        const duplicate = await query(
+          "SELECT id FROM coupon_redemptions WHERE coupon_code = ? LIMIT 1",
+          [couponCode],
+        );
+        if (!duplicate.length) {
+          duplicateFound = false;
+          break;
+        }
+        couponCode = createCouponCode();
+      }
+
+      if (duplicateFound) {
+        throw new AppError(
+          500,
+          "Unable to generate a unique coupon code. Please try again.",
+        );
+      }
+
+      const tokenSignature = crypto
+        .createHash("sha256")
+        .update(couponCode)
+        .digest("hex");
+
+      const couponAddOnsInsert = buildCouponAddOnsInsertColumns(
+        normalizedCouponType,
+        normalizedAddOns,
+      );
+
+      const insertSql = `
+        INSERT INTO coupon_redemptions (
+          coupon_code,
+          student_id,
+          coupon_type,
+          meal_code,
+          ${couponAddOnsInsert.columns.length ? `${couponAddOnsInsert.columns.join(",")},` : ""}
+          token,
+          token_signature,
+          issued_at,
+          expires_at,
+          status
+        ) VALUES (?, ?, ?, ?, ${couponAddOnsInsert.placeholders.length ? `${couponAddOnsInsert.placeholders.join(",")}, ` : ""}?, ?, ?, ?, 'issued')
+      `;
+      const insertParams = [
+        couponCode,
+        studentId,
+        normalizedCouponType,
+        activeMeal.mealCode,
+        ...couponAddOnsInsert.values,
+        couponCode,
+        tokenSignature,
+        issuedAtParts.dateTime,
+        expiresAtParts.dateTime,
+      ];
+
+      console.log("COUPON INSERT SQL:", insertSql.replace(/\s+/g, " ").trim());
+      console.log("COUPON INSERT PARAMS:", JSON.stringify(insertParams));
+
+      const insertResult = await query(insertSql, insertParams);
+      const insertedId = insertResult?.insertId ?? null;
+
+      const insertedRows = insertedId
+        ? await query(
+            `
+              SELECT
+                id,
+                coupon_code AS couponCode,
+                student_id AS studentId,
+                coupon_type AS couponType,
+                meal_code AS mealCode,
+                ${getCouponAddOnsSelectSql("addOnsRaw")},
+                ${getCouponAddOnsColumnSelectSql("storedAddOnsRaw")},
+                ${getCouponLegacyAddOnsJsonSelectSql("storedAddOnsJson")}
+              FROM coupon_redemptions
+              WHERE id = ?
+              LIMIT 1
+            `,
+            [insertedId],
+          )
+        : await query(
+            `
+              SELECT
+                id,
+                coupon_code AS couponCode,
+                student_id AS studentId,
+                coupon_type AS couponType,
+                meal_code AS mealCode,
+                ${getCouponAddOnsSelectSql("addOnsRaw")},
+                ${getCouponAddOnsColumnSelectSql("storedAddOnsRaw")},
+                ${getCouponLegacyAddOnsJsonSelectSql("storedAddOnsJson")}
+              FROM coupon_redemptions
+              WHERE coupon_code = ?
+              LIMIT 1
+            `,
+            [couponCode],
+          );
+      const insertedRecord = insertedRows[0] || null;
+      const storedAddOns = insertedRecord
+        ? normalizeCouponAddOns(insertedRecord.addOnsRaw)
+        : [];
+      const storedAddOnsJson = insertedRecord?.storedAddOnsJson ?? null;
+
+      console.log("INSERTED ROW:", JSON.stringify(insertedRecord));
+
+      res.json({
+        status: "success",
+        diagnosticVersion: ADD_ON_DIAGNOSTIC_VERSION,
+        receivedAddOns: addOns ?? null,
+        normalizedAddOns,
+        storedAddOns,
+        storedAddOnsJson,
+        data: {
+          couponCode,
+          couponId: couponCode,
+          couponType: normalizedCouponType,
+          addOns: normalizedCouponType === "Economy" ? normalizedAddOns : [],
+          add_ons: normalizedCouponType === "Economy" ? normalizedAddOns : [],
+          meal: activeMeal,
+          issuedAt: issuedAtParts.dateTime,
+          expiresAt: expiresAtParts.dateTime,
+          ttlMinutes: COUPON_TOKEN_TTL_MINUTES,
+          status: "ACTIVE",
+          diagnosticVersion: ADD_ON_DIAGNOSTIC_VERSION,
+          receivedAddOns: addOns ?? null,
+          normalizedAddOns,
+          storedAddOns,
+          storedAddOnsJson,
+        },
+      });
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  app.get("/coupons/:couponCode/status", async (req, res, next) => {
+    try {
+      const coupon = await getStudentCouponByCode(req.params.couponCode);
+      if (!coupon) {
+        throw new AppError(404, "Coupon not found");
+      }
+
+      res.json({
+        status: "success",
+        data: coupon,
+      });
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  app.post("/admin/login", async (req, res, next) => {
+    try {
+      const { username, password } = req.body;
+
+      if (username !== ADMIN_USERNAME || password !== ADMIN_PASSWORD) {
+        throw new AppError(401, "Invalid admin credentials");
+      }
+
+      const token = createSignedToken(
+        {
+          sub: username,
+          role: "admin",
+          exp: Date.now() + 12 * 60 * 60 * 1000,
+        },
+        ADMIN_TOKEN_SECRET,
+        "dcms-admin",
+      );
+
+      res.json({
+        status: "success",
+        data: {
+          token,
+          profile: {
+            username,
+            timeZone: APP_TIME_ZONE,
+          },
+        },
+      });
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  app.get("/admin/content", authenticateAdmin, async (_req, res, next) => {
+    try {
+      const now = getZonedNowParts();
+      const [mealWindows, menus, news] = await Promise.all([
+        getMealWindows(),
+        getMenusForDate(now.date),
+        getAllNews(),
+      ]);
+
+      res.json({
+        status: "success",
+        data: {
+          serverDate: now.date,
+          serverTime: now.time,
+          timeZone: APP_TIME_ZONE,
+          activeMeal: getActiveMeal(mealWindows, now.totalMinutes),
+          mealWindows,
+          menus,
+          news,
+        },
+      });
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  app.get("/admin/dashboard", authenticateAdmin, async (_req, res, next) => {
+    try {
+      const now = getZonedNowParts();
+      const [
+        mealWindows,
+        menus,
+        news,
+        recentRedemptions,
+        issuedSummaryRows,
+        redeemedSummaryRows,
+        registeredStudentsRows,
+        issuedBreakdownRows,
+      ] = await Promise.all([
+        getMealWindows(),
+        getMenusForDate(now.date),
+        getAllNews(),
+        getRecentRedemptions(now.date),
+        query(
+          "SELECT COUNT(*) AS total FROM coupon_redemptions",
+        ),
+        query(
+          "SELECT COUNT(*) AS total FROM coupon_redemptions WHERE DATE(redeemed_at) = ?",
+          [now.date],
+        ),
+        query("SELECT COUNT(*) AS total FROM users"),
+        query(
+          `
+            SELECT
+              LOWER(TRIM(coupon_type)) AS couponType,
+              COUNT(*) AS total
+            FROM coupon_redemptions
+            GROUP BY LOWER(TRIM(coupon_type))
+          `,
+        ),
+      ]);
+
+      const issuedBreakdown = issuedBreakdownRows.reduce((accumulator, row) => {
+        const couponType = String(row.couponType || "").trim().toLowerCase();
+        accumulator[couponType] = Number(row.total || 0);
+        return accumulator;
+      }, {});
+
+      res.json({
+        status: "success",
+        data: {
+          serverDate: now.date,
+          serverTime: now.time,
+          timeZone: APP_TIME_ZONE,
+          activeMeal: getActiveMeal(mealWindows, now.totalMinutes),
+          stats: {
+            menusConfigured: menus.filter((menu) => menu.items.length > 0).length,
+            publishedNews: news.filter((item) => item.status === "published")
+              .length,
+            qrIssuedToday: Number(issuedSummaryRows[0]?.total || 0),
+            economyFoodCouponsIssuedToday: Number(
+              issuedBreakdown.economy || 0,
+            ),
+            mealCouponsIssuedToday: Number(
+              issuedBreakdown.coupon || 0,
+            ),
+            qrRedeemedToday: Number(redeemedSummaryRows[0]?.total || 0),
+            registeredStudents: Number(registeredStudentsRows[0]?.total || 0),
+            activeStudentsToday: new Set(
+              recentRedemptions.map((item) => item.studentId),
+            ).size,
+          },
+          mealWindows,
+          menus,
+          news: news.slice(0, 8),
+          recentRedemptions,
+          analytics: {
+            weeklyTrend: [],
+            mealBreakdown: [],
+            couponBreakdown: [],
+          },
+        },
+      });
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  app.put("/admin/meal-windows", authenticateAdmin, async (req, res, next) => {
+    try {
+      const { mealWindows } = req.body;
+      if (!Array.isArray(mealWindows) || !mealWindows.length) {
+        throw new AppError(400, "Meal windows are required");
+      }
+
+      for (const mealWindow of mealWindows) {
+        const { mealCode, mealName, startTime, endTime, sortOrder } =
+          mealWindow;
+
+        if (!mealCode || !mealName || !startTime || !endTime) {
+          throw new AppError(
+            400,
+            "Each meal window needs mealCode, mealName, startTime, and endTime",
+          );
+        }
+
+        await query(
+          `
+            INSERT INTO meal_windows (meal_code, meal_name, start_time, end_time, sort_order)
+            VALUES (?, ?, ?, ?, ?)
+            ON DUPLICATE KEY UPDATE
+              meal_name = VALUES(meal_name),
+              start_time = VALUES(start_time),
+              end_time = VALUES(end_time),
+              sort_order = VALUES(sort_order)
+          `,
+          [mealCode, mealName, startTime, endTime, Number(sortOrder || 0)],
+        );
+      }
+
+      res.json({ status: "success", message: "Meal windows updated successfully" });
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  app.put("/admin/menus/today", authenticateAdmin, async (req, res, next) => {
+    try {
+      const { menus } = req.body;
+      const now = getZonedNowParts();
+
+      if (!Array.isArray(menus) || !menus.length) {
+        throw new AppError(400, "Menus payload is required");
+      }
+
+      for (const menu of menus) {
+        if (!menu.mealCode || !Array.isArray(menu.items)) {
+          throw new AppError(
+            400,
+            "Each menu must contain mealCode and items",
+          );
+        }
+
+        const sanitizedItems = menu.items
+          .map((item) => String(item || "").trim())
+          .filter(Boolean);
+
+        await query(
+          `
+            INSERT INTO daily_menus (menu_date, meal_code, items_json)
+            VALUES (?, ?, ?)
+            ON DUPLICATE KEY UPDATE
+              items_json = VALUES(items_json),
+              updated_at = CURRENT_TIMESTAMP
+          `,
+          [now.date, menu.mealCode, JSON.stringify(sanitizedItems)],
+        );
+      }
+
+      res.json({
+        status: "success",
+        message: "Today's menu updated successfully",
+      });
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  app.post("/admin/news", authenticateAdmin, async (req, res, next) => {
+    try {
+      const { title, body, category, status, priority, publishAt, expiresAt } =
+        req.body;
+
+      if (!title || !body) {
+        throw new AppError(400, "Title and body are required");
+      }
+
+      const now = getZonedNowParts();
+      await query(
+        `
+          INSERT INTO news_posts (title, body, category, status, priority, publish_at, expires_at)
+          VALUES (?, ?, ?, ?, ?, ?, ?)
+        `,
+        [
+          title,
+          body,
+          category || "General",
+          status || "published",
+          Number(priority || 0),
+          publishAt || now.dateTime,
+          expiresAt || null,
+        ],
+      );
+
+      res.json({ status: "success", message: "News published successfully" });
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  app.put("/admin/news/:id", authenticateAdmin, async (req, res, next) => {
+    try {
+      const { title, body, category, status, priority, publishAt, expiresAt } =
+        req.body;
+
+      if (!title || !body) {
+        throw new AppError(400, "Title and body are required");
+      }
+
+      await query(
+        `
+          UPDATE news_posts
+          SET
+            title = ?,
+            body = ?,
+            category = ?,
+            status = ?,
+            priority = ?,
+            publish_at = ?,
+            expires_at = ?
+          WHERE id = ?
+        `,
+        [
+          title,
+          body,
+          category || "General",
+          status || "published",
+          Number(priority || 0),
+          publishAt || getZonedNowParts().dateTime,
+          expiresAt || null,
+          req.params.id,
+        ],
+      );
+
+      res.json({ status: "success", message: "News updated successfully" });
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  app.delete("/admin/news/:id", authenticateAdmin, async (req, res, next) => {
+    try {
+      await query("DELETE FROM news_posts WHERE id = ?", [req.params.id]);
+      res.json({ status: "success", message: "News deleted successfully" });
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  app.post("/admin/qr/session", authenticateAdmin, async (req, res, next) => {
+    try {
+      const { mealCode } = req.body;
+      const now = getZonedNowParts();
+      const mealWindows = await getMealWindows();
+      const activeMeal = getActiveMeal(mealWindows, now.totalMinutes);
+      const selectedMeal = mealCode
+        ? mealWindows.find((window) => window.mealCode === mealCode)
+        : activeMeal.isActive
+          ? mealWindows.find(
+              (window) => window.mealCode === activeMeal.mealCode,
+            )
+          : mealWindows[0];
+
+      if (!selectedMeal) {
+        throw new AppError(404, "Meal session not found");
+      }
+
+      const qrValue = createSignedToken(
+        {
+          mealCode: selectedMeal.mealCode,
+          mealName: selectedMeal.mealName,
+          generatedAt: now.dateTime,
+          timeZone: APP_TIME_ZONE,
+        },
+        ADMIN_TOKEN_SECRET,
+        "dcms-session",
+      );
+
+      res.json({
+        status: "success",
+        data: {
+          qrValue,
+          meal: selectedMeal,
+          serverDate: now.date,
+          serverTime: now.time,
+        },
+      });
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  app.post("/admin/qr/validate", authenticateAdmin, async (req, res, next) => {
+    try {
+      const token = String(req.body.token || "").trim();
+      const operatorName = String(
+        req.body.operatorName || req.admin.sub || "Admin",
+      ).trim();
+
+      if (!token) {
+        throw new AppError(400, "A coupon QR token is required");
+      }
+
+      const couponPayload = verifySignedToken(
+        token,
+        COUPON_TOKEN_SECRET,
+        "dcms-coupon",
+      );
+      if (!couponPayload) {
+        throw new AppError(400, "Invalid coupon QR payload");
+      }
+
+      const tokenSignature = crypto
+        .createHash("sha256")
+        .update(token)
+        .digest("hex");
+
+      const rows = await query(
+        `
+          SELECT
+            id,
+            student_id AS studentId,
+            coupon_type AS couponType,
+            meal_code AS mealCode,
+            ${getCouponAddOnsSelectSql("addOnsRaw")},
+            issued_at AS issuedAt,
+            expires_at AS expiresAt,
+            redeemed_at AS redeemedAt,
+            status
+          FROM coupon_redemptions
+          WHERE token_signature = ?
+          LIMIT 1
+        `,
+        [tokenSignature],
+      );
+
+      if (!rows.length) {
+        throw new AppError(
+          404,
+          "This QR token does not exist in the redemption log",
+        );
+      }
+
+      const record = rows[0];
+      const now = getZonedNowParts();
+      const mealWindows = await getMealWindows();
+      const activeMeal = getActiveMeal(mealWindows, now.totalMinutes);
+
+      if (record.status === "redeemed") {
+        throw new AppError(409, "This QR code has already been redeemed");
+      }
+
+      if (!activeMeal.isActive || activeMeal.mealCode !== record.mealCode) {
+        throw new AppError(
+          400,
+          "This QR can only be scanned during the matching cafeteria meal window",
+        );
+      }
+
+      if (now.dateTime > record.expiresAt) {
+        await query("UPDATE coupon_redemptions SET status = ? WHERE id = ?", [
+          "expired",
+          record.id,
+        ]);
+        throw new AppError(400, "This QR code has expired");
+      }
+
+      await query(
+        `
+          UPDATE coupon_redemptions
+          SET redeemed_at = ?, redeemed_by = ?, status = 'redeemed'
+          WHERE id = ?
+        `,
+        [now.dateTime, operatorName, record.id],
+      );
+
+      res.json({
+        status: "success",
+        data: {
+          studentId: record.studentId,
+          couponType: record.couponType,
+          addOns: normalizeCouponAddOns(record.addOnsRaw),
+          add_ons: normalizeCouponAddOns(record.addOnsRaw),
+          mealCode: record.mealCode,
+          redeemedAt: now.dateTime,
+          redeemedBy: operatorName,
+        },
+        message: "Coupon redeemed successfully",
+      });
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  app.post(
+    "/admin/coupons/redeem",
+    authenticateAdmin,
+    async (req, res, next) => {
+      try {
+        const couponCode = String(req.body.couponCode || "").trim();
+        const operatorName = String(
+          req.body.operatorName || req.admin.sub || "Admin",
+        ).trim();
+
+        if (!couponCode) {
+          throw new AppError(400, "Coupon code is required");
+        }
+
+        const rows = await query(
+          `
+            SELECT
+              id,
+              coupon_code AS couponCode,
+              student_id AS studentId,
+              coupon_type AS couponType,
+              meal_code AS mealCode,
+              ${getCouponAddOnsSelectSql("addOnsRaw")},
+              issued_at AS issuedAt,
+              expires_at AS expiresAt,
+              redeemed_at AS redeemedAt,
+              status
+            FROM coupon_redemptions
+            WHERE coupon_code = ?
+            LIMIT 1
+          `,
+          [couponCode],
+        );
+
+        if (!rows.length) {
+          throw new AppError(404, "Coupon not found");
+        }
+
+        const record = rows[0];
+        const now = getZonedNowParts();
+
+        if (record.status === "redeemed") {
+          throw new AppError(409, "This coupon has already been redeemed");
+        }
+
+        if (record.expiresAt < now.dateTime || record.status === "expired") {
+          await query(
+            "UPDATE coupon_redemptions SET status = 'expired' WHERE id = ?",
+            [record.id],
+          );
+          throw new AppError(400, "This coupon has expired");
+        }
+
+        await query(
+          `
+            UPDATE coupon_redemptions
+            SET redeemed_at = ?, redeemed_by = ?, status = 'redeemed'
+            WHERE id = ?
+          `,
+          [now.dateTime, operatorName, record.id],
+        );
+
+        res.json({
+          status: "success",
+          data: {
+            couponCode: record.couponCode,
+            studentId: record.studentId,
+            couponType: record.couponType,
+            addOns: normalizeCouponAddOns(record.addOnsRaw),
+            add_ons: normalizeCouponAddOns(record.addOnsRaw),
+            mealCode: record.mealCode,
+            redeemedAt: now.dateTime,
+            redeemedBy: operatorName,
+            status: "REDEEMED",
+          },
+          message: "Coupon redeemed successfully",
+        });
+      } catch (error) {
+        next(error);
+      }
+    },
+  );
+
+  app.get("/admin/redemptions", authenticateAdmin, async (req, res, next) => {
+    try {
+      const selectedDate = req.query.date
+        ? String(req.query.date)
+        : null;
+      const redemptions = await getRecentRedemptions(
+        selectedDate,
+        req.query.limit,
+      );
+      res.json({ status: "success", data: redemptions });
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  app.get("/api/food-items", async (req, res, next) => {
+    try {
+      const items = await getEconomyFoodItems({
+        onlyAvailable: req.query.available !== "false",
+      });
+
+      res.json({
+        status: "success",
+        data: items,
+      });
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  app.post("/api/orders", async (req, res, next) => {
+    try {
+      const { studentId, foodItemId } = req.body;
+      if (!studentId || !foodItemId) {
+        throw new AppError(400, "studentId and foodItemId are required.");
+      }
+
+      const result = await createOrder({ studentId, foodItemId });
+      res.status(201).json({
+        status: "success",
+        message: "Economy food order created and coupon generated.",
+        data: result,
+      });
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  app.post("/api/coupons/generate", async (req, res, next) => {
+    try {
+      const { studentId, orderId } = req.body;
+      if (!studentId || !orderId) {
+        throw new AppError(400, "studentId and orderId are required.");
+      }
+
+      const coupon = await generateCoupon({ studentId, orderId });
+      res.status(201).json({
+        status: "success",
+        data: coupon,
+      });
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  app.get(
+    "/api/students/:studentId/coupons/latest",
+    async (req, res, next) => {
+      try {
+        const coupon = await getLatestCouponForStudent(req.params.studentId);
+        res.json({
+          status: "success",
+          data: coupon,
+        });
+      } catch (error) {
+        next(error);
+      }
+    },
+  );
+
+  app.get("/api/coupons/:couponCode/status", async (req, res, next) => {
+    try {
+      const coupon = await getCouponByCode(req.params.couponCode);
+      if (!coupon) {
+        throw new AppError(404, "Coupon not found.");
+      }
+
+      res.json({
+        status: "success",
+        data: coupon,
+      });
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  app.post("/api/coupons/:couponCode/redeem", async (req, res, next) => {
+    try {
+      const coupon = await redeemCoupon({
+        couponCode: req.params.couponCode,
+        operatorName: req.body.operatorName,
+      });
+
+      res.json({
+        status: "success",
+        message: "Coupon redeemed successfully.",
+        data: coupon,
+      });
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  app.get("/api/admin/coupons/active", async (_req, res, next) => {
+    try {
+      const coupons = await getActiveCoupons();
+      res.json({
+        status: "success",
+        data: coupons,
+      });
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  app.get("/api/admin/coupons", async (req, res, next) => {
+    try {
+      const coupons = await listCoupons({
+        status: req.query.status,
+        search: req.query.search,
+        limit: req.query.limit,
+      });
+
+      res.json({
+        status: "success",
+        data: coupons,
+      });
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  app.get("/api/admin/analytics/summary", async (_req, res, next) => {
+    try {
+      const analytics = await getAnalyticsSummary();
+      res.json({
+        status: "success",
+        data: analytics,
+      });
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  app.use((error, _req, res, _next) => {
+    console.error(error);
+    const statusCode = error.statusCode || 500;
+    res.status(statusCode).json({
+      status: "error",
+      message: error.message || "Internal server error",
     });
-    showFlash(newsId ? "News updated" : "News published", "success");
-    resetNewsForm();
-    await loadDashboard();
-  } catch (error) {
-    showFlash(error.message || "Unable to save news", "danger");
-  }
-}
+  });
 
-async function deleteNews(newsId) {
-  const confirmed = window.confirm("Delete this news item?");
-  if (!confirmed) return;
-
-  try {
-    await api(`/admin/news/${newsId}`, {
-      method: "DELETE",
+  setInterval(() => {
+    expireCoupons().catch((error) => {
+      console.error("Auto-expiry job failed:", error.message);
     });
-    showFlash("News deleted", "success");
-    await loadDashboard();
-  } catch (error) {
-    showFlash(error.message || "Unable to delete news", "danger");
-  }
+  }, 10 * 1000);
+
+  return app;
 }
 
-async function initialise() {
-  render();
-  await checkHealth();
-  if (state.token) {
-    await loadDashboard();
-  }
-}
-
-initialise();
+module.exports = {
+  createApp,
+};
