@@ -14,6 +14,15 @@ const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || 'admin123';
 const ADMIN_TOKEN_SECRET = process.env.ADMIN_TOKEN_SECRET || 'replace-this-admin-secret';
 const COUPON_TOKEN_SECRET = process.env.COUPON_TOKEN_SECRET || 'replace-this-coupon-secret';
 const COUPON_TOKEN_TTL_MINUTES = Number(process.env.COUPON_TOKEN_TTL_MINUTES || 10);
+const ECONOMY_COUPON_ADD_ON_OPTIONS = [
+  'Extra vege',
+  'Extra egg',
+  'Extra chicken/fish',
+  'No extra add on',
+];
+const ECONOMY_COUPON_ADD_ON_ALIASES = {
+  'Extra chicken': 'Extra chicken/fish',
+};
 
 app.use(cors());
 app.use(bodyParser.json());
@@ -188,6 +197,51 @@ function sanitizeCouponType(value) {
   return null;
 }
 
+function normalizeCouponAddOns(value) {
+  const rawSelections = Array.isArray(value)
+    ? value
+    : typeof value === 'string' && value.trim()
+      ? (() => {
+          try {
+            const parsed = JSON.parse(value);
+            return Array.isArray(parsed) ? parsed : [value];
+          } catch (_error) {
+            return [value];
+          }
+        })()
+      : [];
+
+  const uniqueSelections = Array.from(
+    new Set(
+      rawSelections
+        .map((item) => {
+          const normalizedItem = String(item || '').trim();
+          return ECONOMY_COUPON_ADD_ON_ALIASES[normalizedItem] || normalizedItem;
+        })
+        .filter((item) => ECONOMY_COUPON_ADD_ON_OPTIONS.includes(item)),
+    ),
+  );
+
+  if (!uniqueSelections.length) {
+    return [];
+  }
+
+  const extraSelections = uniqueSelections.filter((item) => item !== 'No extra add on');
+  if (extraSelections.length) {
+    return extraSelections;
+  }
+
+  if (uniqueSelections.includes('No extra add on')) {
+    return ['No extra add on'];
+  }
+
+  return [];
+}
+
+function getCouponAddOnsSelectSql(alias = 'addOnsRaw') {
+  return `CAST(add_ons AS CHAR) AS ${alias}`;
+}
+
 async function initialiseDatabase() {
   await dbQuery(`
     CREATE TABLE IF NOT EXISTS users (
@@ -241,6 +295,7 @@ async function initialiseDatabase() {
       student_id VARCHAR(50) NOT NULL,
       coupon_type VARCHAR(30) NOT NULL,
       meal_code VARCHAR(30) NOT NULL,
+      add_ons JSON NULL,
       token TEXT NOT NULL,
       token_signature VARCHAR(64) NOT NULL,
       issued_at DATETIME NOT NULL,
@@ -251,6 +306,11 @@ async function initialiseDatabase() {
       UNIQUE KEY unique_token_signature (token_signature)
     )
   `);
+
+  await dbQuery(`
+    ALTER TABLE coupon_redemptions
+    ADD COLUMN IF NOT EXISTS add_ons JSON NULL
+  `).catch(() => {});
 
   const defaultMealWindows = [
     ['breakfast', 'Breakfast', '07:00:00', '10:30:00', 1],
@@ -412,6 +472,7 @@ async function getRecentRedemptions(selectedDate) {
         id,
         student_id AS studentId,
         coupon_type AS couponType,
+        ${getCouponAddOnsSelectSql('addOnsRaw')},
         meal_code AS mealCode,
         issued_at AS issuedAt,
         expires_at AS expiresAt,
@@ -426,7 +487,11 @@ async function getRecentRedemptions(selectedDate) {
     [selectedDate],
   );
 
-  return rows;
+  return rows.map((row) => ({
+    ...row,
+    addOns: normalizeCouponAddOns(row.addOnsRaw),
+    add_ons: normalizeCouponAddOns(row.addOnsRaw),
+  }));
 }
 
 async function buildAppPayload(studentId) {
@@ -619,10 +684,17 @@ app.get('/news', async (req, res) => {
 
 app.post('/coupons/issue', async (req, res) => {
   const { studentId, couponType } = req.body;
+  const addOns = req.body.addOns ?? req.body.add_ons ?? req.body.addons;
   const normalizedCouponType = sanitizeCouponType(couponType);
+  const normalizedAddOns = normalizeCouponAddOns(addOns);
 
   if (!studentId || !normalizedCouponType) {
     res.status(400).json({ status: 'error', message: 'Student ID and a valid coupon type are required' });
+    return;
+  }
+
+  if (normalizedCouponType === 'Economy' && normalizedAddOns.length === 0) {
+    res.status(400).json({ status: 'error', message: 'Please select at least one add-on option.' });
     return;
   }
 
@@ -689,17 +761,19 @@ app.post('/coupons/issue', async (req, res) => {
           student_id,
           coupon_type,
           meal_code,
+          add_ons,
           token,
           token_signature,
           issued_at,
           expires_at,
           status
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, 'issued')
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'issued')
       `,
       [
         studentId,
         normalizedCouponType,
         activeMeal.mealCode,
+        normalizedCouponType === 'Economy' ? JSON.stringify(normalizedAddOns) : null,
         token,
         tokenSignature,
         issuedAtParts.dateTime,
@@ -712,6 +786,8 @@ app.post('/coupons/issue', async (req, res) => {
       data: {
         token,
         couponType: normalizedCouponType,
+        addOns: normalizedCouponType === 'Economy' ? normalizedAddOns : [],
+        add_ons: normalizedCouponType === 'Economy' ? normalizedAddOns : [],
         meal: activeMeal,
         issuedAt: issuedAtParts.dateTime,
         expiresAt: expiresAtParts.dateTime,
@@ -1038,6 +1114,7 @@ app.post('/admin/qr/validate', authenticateAdmin, async (req, res) => {
           id,
           student_id AS studentId,
           coupon_type AS couponType,
+          ${getCouponAddOnsSelectSql('addOnsRaw')},
           meal_code AS mealCode,
           issued_at AS issuedAt,
           expires_at AS expiresAt,
@@ -1090,6 +1167,8 @@ app.post('/admin/qr/validate', authenticateAdmin, async (req, res) => {
       data: {
         studentId: record.studentId,
         couponType: record.couponType,
+        addOns: normalizeCouponAddOns(record.addOnsRaw),
+        add_ons: normalizeCouponAddOns(record.addOnsRaw),
         mealCode: record.mealCode,
         redeemedAt: now.dateTime,
         redeemedBy: operatorName,
