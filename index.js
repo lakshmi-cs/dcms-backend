@@ -227,7 +227,9 @@ function getMealClaimWindow(nowParts = getZonedNowParts(), mealWindows = []) {
   const isConfigured =
     claimStartMinutes != null &&
     initialClaimEndMinutes != null &&
-    reservationEndMinutes != null;
+    reservationEndMinutes != null &&
+    initialClaimEndMinutes > claimStartMinutes &&
+    reservationEndMinutes > initialClaimEndMinutes;
   const isInitialClaimOpen = isConfigured &&
     nowParts.totalMinutes >= claimStartMinutes &&
     nowParts.totalMinutes <= initialClaimEndMinutes;
@@ -649,6 +651,51 @@ async function expireStaleCouponRows(nowParts = getZonedNowParts()) {
   );
 }
 
+async function syncTodayMealReservationDeadlines(
+  nowParts = getZonedNowParts(),
+  mealWindows = [],
+) {
+  const mealClaimWindow = getMealClaimWindow(nowParts, mealWindows);
+  if (!mealClaimWindow.isConfigured || !mealClaimWindow.endsAt) {
+    return;
+  }
+
+  const synchronizedStatus =
+    nowParts.dateTime <= mealClaimWindow.endsAt ? 'claimed' : 'expired';
+
+  await dbQuery(
+    `
+      UPDATE coupon_redemptions
+      SET
+        deadline_at = ?,
+        expires_at = ?,
+        status = ?
+      WHERE coupon_type = 'Coupon'
+        AND claim_option = 'LATER'
+        AND activated_at IS NULL
+        AND redeemed_at IS NULL
+        AND COALESCE(meal_date, DATE(issued_at)) = ?
+        AND status IN ('claimed', 'expired')
+        AND (
+          deadline_at IS NULL
+          OR deadline_at <> ?
+          OR expires_at IS NULL
+          OR expires_at <> ?
+          OR status <> ?
+        )
+    `,
+    [
+      mealClaimWindow.endsAt,
+      mealClaimWindow.endsAt,
+      synchronizedStatus,
+      nowParts.date,
+      mealClaimWindow.endsAt,
+      mealClaimWindow.endsAt,
+      synchronizedStatus,
+    ],
+  );
+}
+
 function mapCouponRow(row) {
   const status = normalizeResponseCouponStatus(row.status);
   return {
@@ -728,8 +775,9 @@ async function getStudentCoupons(studentId) {
 
 async function buildAppPayload(studentId) {
   const now = getZonedNowParts();
-  const [mealWindows, menus, news, studentCoupons] = await Promise.all([
-    getMealWindows(),
+  const mealWindows = await getMealWindows();
+  await syncTodayMealReservationDeadlines(now, mealWindows);
+  const [menus, news, studentCoupons] = await Promise.all([
     getMenusForDate(now.date),
     getPublishedNews(now.dateTime),
     getStudentCoupons(studentId),
@@ -1013,8 +1061,9 @@ app.post('/coupons/issue', async (req, res) => {
 
   try {
     const now = getZonedNowParts();
-    await expireStaleCouponRows(now);
     const mealWindows = await getMealWindows();
+    await syncTodayMealReservationDeadlines(now, mealWindows);
+    await expireStaleCouponRows(now);
     const activeMeal = getActiveMeal(mealWindows, now.totalMinutes);
     const mealClaimWindow = getMealClaimWindow(now, mealWindows);
     const requestedAddOns = normalizeCouponAddOns(addOns);
@@ -1400,9 +1449,9 @@ app.post('/coupons/activate', async (req, res) => {
 
   try {
     const now = getZonedNowParts();
-    await expireStaleCouponRows(now);
-
     const mealWindows = await getMealWindows();
+    await syncTodayMealReservationDeadlines(now, mealWindows);
+    await expireStaleCouponRows(now);
     const mealClaimWindow = getMealClaimWindow(now, mealWindows);
     if (!mealClaimWindow.isConfigured) {
       res.status(503).json({
@@ -1718,19 +1767,7 @@ app.put('/admin/meal-windows', authenticateAdmin, async (req, res) => {
     }
 
     const now = getZonedNowParts();
-    const updatedActivationDeadline = `${now.date} ${dinnerWindow.endTime}`;
-    await dbQuery(
-      `
-        UPDATE coupon_redemptions
-        SET
-          deadline_at = ?,
-          expires_at = ?
-        WHERE coupon_type = 'Coupon'
-          AND COALESCE(meal_date, DATE(issued_at)) = ?
-          AND status = 'claimed'
-      `,
-      [updatedActivationDeadline, updatedActivationDeadline, now.date],
-    );
+    await syncTodayMealReservationDeadlines(now, normalizedMealWindows);
     await expireStaleCouponRows(now);
 
     res.json({ status: 'success', message: 'Meal windows updated successfully' });
