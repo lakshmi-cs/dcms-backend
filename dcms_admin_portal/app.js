@@ -419,7 +419,7 @@ async function checkHealth() {
     const data = await api("/health", { auth: false });
     const label = data.activeMeal?.isActive
       ? `${data.activeMeal.mealName} is live`
-      : `Connected Â· ${data.timeZone}`;
+      : `Connected · ${data.timeZone}`;
     setServerStatus(label, "success");
   } catch (error) {
     setServerStatus("Backend unavailable", "danger");
@@ -446,7 +446,7 @@ async function login(username, password) {
 
     state.token = token;
     safeStorageSet(AUTH_STORAGE_KEY, state.token);
-    setServerStatus("Connected Â· Signing in", "success");
+    setServerStatus("Connected · Signing in", "success");
     showFlash("Admin session started", "success");
     await loadDashboard();
   } catch (error) {
@@ -536,7 +536,7 @@ async function loadDashboard(options = {}) {
     setServerStatus(
       dashboard?.activeMeal?.isActive
         ? `${dashboard.activeMeal.mealName} is live`
-        : `Connected Â· ${content?.timeZone || dashboard?.timeZone || "Backend ready"}`,
+        : `Connected · ${content?.timeZone || dashboard?.timeZone || "Backend ready"}`,
       "success",
     );
     if (!isBackgroundRefresh) {
@@ -586,31 +586,36 @@ function loginMarkup() {
             </div>
           </div>
           <p class="eyebrow">Cafeteria management dashboard</p>
-          <h2>Manage meal hours, live QR service, daily menus, and student notices.</h2>
+          <h2>Run today’s cafeteria from one clear workspace.</h2>
           <p>
-            This website links directly to your cafeteria backend, so updates made here can flow into the student application.
+            Manage meal hours, publish student content, and review coupon activity with every update flowing directly into the student app.
           </p>
           <div class="feature-list">
-            <div class="feature-chip">Live QR issue + validation</div>
-            <div class="feature-chip">Daily menu publishing</div>
-            <div class="feature-chip">News distribution to the app</div>
+            <div class="feature-chip">Meal service controls</div>
+            <div class="feature-chip">Menu and notice publishing</div>
+            <div class="feature-chip">Student records and feedback</div>
           </div>
         </div>
         <form id="loginForm" class="auth-form">
+          <div class="auth-form-heading">
+            <span class="auth-form-icon">A</span>
+            <div>
+              <strong>Administrator sign in</strong>
+              <small>Use your cafeteria control-room account</small>
+            </div>
+          </div>
           <label>
             <span>Admin username</span>
-            <input name="username" type="text" placeholder="admin" required />
+            <input name="username" type="text" placeholder="Enter username" autocomplete="username" required />
           </label>
           <label>
             <span>Password</span>
-            <input name="password" type="password" placeholder="Enter password" required />
+            <input name="password" type="password" placeholder="Enter password" autocomplete="current-password" required />
           </label>
           <button type="submit" class="primary-button" ${state.loading ? "disabled" : ""}>
-            ${state.loading ? "Signing in..." : "Enter Control Room"}
+            ${state.loading ? "Signing in..." : "Open Admin Workspace"}
           </button>
-          <p class="helper-copy">
-            These credentials come from your backend <code>.env</code> file.
-          </p>
+          <p class="helper-copy">Secure access for authorized cafeteria staff only.</p>
         </form>
       </div>
     </section>
@@ -654,12 +659,12 @@ function detailItemMarkup(label, value) {
 }
 
 const NAV_ICON_LABELS = {
-  overview: "H",
-  service: "S",
-  menu: "M",
-  news: "N",
-  validation: "Q",
-  activity: "A",
+  overview: "⌂",
+  service: "◷",
+  menu: "≡",
+  news: "✦",
+  validation: "✓",
+  activity: "◎",
 };
 
 function navLinkMarkup(section) {
@@ -1068,7 +1073,7 @@ function passwordResetRequestsMarkup(requests) {
                   </td>
                   <td>${escapeHtml(formatDateTime(item.requestedAt))}</td>
                   <td><span class="table-pill ${escapeHtml(item.status)}">${escapeHtml(item.status)}</span></td>
-                  <td>${escapeHtml(item.expiresAt ? formatDateTime(item.expiresAt) : "â€”")}</td>
+                  <td>${escapeHtml(item.expiresAt ? formatDateTime(item.expiresAt) : "—")}</td>
                   <td>
                     <div class="table-actions">
                       ${canManage ? `<button type="button" class="secondary-button compact-button" data-approve-password-reset="${item.id}">${approveLabel}</button>` : ""}
@@ -1288,7 +1293,7 @@ function redemptionMiniListMarkup(redemptions) {
             <div class="activity-mini-item">
               <div>
                 <strong>${escapeHtml(item.studentId)}</strong>
-                <span>${escapeHtml(`${item.couponType} Â· ${item.mealCode}`)}</span>
+                <span>${escapeHtml(`${item.couponType} · ${item.mealCode}`)}</span>
               </div>
               <small>${escapeHtml(formatRelativeTime(item.issuedAt))}</small>
             </div>
@@ -1475,6 +1480,29 @@ function dashboardMarkup() {
         </div>
       </section>
 
+      <nav class="admin-quick-actions" aria-label="Common admin actions">
+        <a class="admin-quick-action admin-quick-action--hours" href="${escapeHtml(pageUrl("service"))}">
+          <span class="admin-quick-action-icon">◷</span>
+          <span><strong>Meal hours</strong><small>Update service windows</small></span>
+          <span class="admin-quick-action-arrow">→</span>
+        </a>
+        <a class="admin-quick-action admin-quick-action--menu" href="${escapeHtml(pageUrl("menu"))}">
+          <span class="admin-quick-action-icon">≡</span>
+          <span><strong>Publish menu</strong><small>Edit today’s meals</small></span>
+          <span class="admin-quick-action-arrow">→</span>
+        </a>
+        <a class="admin-quick-action admin-quick-action--news" href="${escapeHtml(pageUrl("news"))}">
+          <span class="admin-quick-action-icon">✦</span>
+          <span><strong>Send notice</strong><small>Update student news</small></span>
+          <span class="admin-quick-action-arrow">→</span>
+        </a>
+        <a class="admin-quick-action admin-quick-action--records" href="${escapeHtml(pageUrl("activity"))}">
+          <span class="admin-quick-action-icon">◎</span>
+          <span><strong>Student records</strong><small>Review activity</small></span>
+          <span class="admin-quick-action-arrow">→</span>
+        </a>
+      </nav>
+
       <section class="overview-kpi-grid">
         ${summaryKpiMarkup("Economy food coupon issued", formatCompactNumber(economyFoodCouponsIssuedToday), "Issued from the student app records", "summary-kpi-card--served")}
         ${summaryKpiMarkup("Meal coupon", formatCompactNumber(mealCouponsIssuedToday), "Issued from the student app records", "summary-kpi-card--issued")}
@@ -1527,7 +1555,7 @@ function dashboardMarkup() {
       "Service operations",
       "Meal Hours",
       "This page focuses only on cafeteria operating hours so staff can prepare service without extra distractions.",
-      `<button type="button" class="secondary-button" id="saveScheduleButton">Save Hours</button>`,
+      `<button type="button" class="primary-button compact-primary-button" id="saveScheduleButton">Save meal hours</button>`,
       `Computer time: ${escapeHtml(computerStamp || "Unavailable")}`,
     )}
     <section class="module-section">
@@ -1556,7 +1584,7 @@ function dashboardMarkup() {
             ${mealWindowRows(mealWindows)}
           </form>
           <div class="panel-actions">
-            <button type="button" class="secondary-button" id="saveScheduleButtonInline">Save Hours</button>
+            <button type="button" class="primary-button" id="saveScheduleButtonInline">Save meal hours</button>
           </div>
         </article>
         <article class="glass-card panel-card">
@@ -1577,7 +1605,7 @@ function dashboardMarkup() {
       "Student content",
       "Daily Menu",
       "This page is only for today's menu. Publish clean meal items here without mixing them with news tasks.",
-      `<button type="button" class="secondary-button" id="saveMenusButton">Publish Menu</button>`,
+      `<button type="button" class="primary-button compact-primary-button" id="saveMenusButton">Publish today’s menu</button>`,
       `Student app reads these items from the shared backend after refresh.`,
     )}
     <section class="module-section">
@@ -1614,7 +1642,7 @@ function dashboardMarkup() {
       "Broadcast centre",
       "Notices",
       "Use this page to write, schedule, edit, and review student-facing announcements in one place.",
-      `<button type="button" class="secondary-button" id="resetNewsFormButton">Clear Form</button>`,
+      `<button type="button" class="secondary-button" id="resetNewsFormButton">New announcement</button>`,
       `Published news will appear in the app when its publish time is reached.`,
     )}
     <section class="module-section">
@@ -1670,7 +1698,7 @@ function dashboardMarkup() {
               <span>Message</span>
               <textarea name="body" rows="6" placeholder="Write the cafeteria announcement here" required></textarea>
             </label>
-            <button type="submit" class="primary-button">Save News</button>
+            <button type="submit" class="primary-button">Save announcement</button>
           </form>
         </article>
         <article class="news-column">
@@ -1757,7 +1785,9 @@ function dashboardMarkup() {
       <button class="sidebar-overlay ${state.sidebarOpen ? "is-open" : ""}" id="sidebarOverlay" type="button" aria-label="Close navigation"></button>
       <aside class="dashboard-sidebar ${state.sidebarOpen ? "is-open" : ""}">
         <div class="dashboard-brand glass-card">
-          <div class="brand-mark">DC</div>
+          <div class="brand-mark brand-mark--logo">
+            <img src="./assets/aimst-university-logo.png" alt="AIMST University" />
+          </div>
           <div class="dashboard-brand-copy">
             <strong>${escapeHtml(config.portalName || "AIMST DCMS Control Room")}</strong>
             <span>Hostel cafeteria administration</span>
@@ -1806,10 +1836,11 @@ function dashboardMarkup() {
               id="toolbarSearchInput"
               type="search"
               name="workspaceQuery"
-              placeholder="Search menu, notices, records"
+              placeholder="Find a page or admin task"
+              aria-label="Find a page or admin task"
               value="${escapeHtml(state.workspaceQuery)}"
             />
-            <button class="toolbar-search-button" type="submit">Go</button>
+            <button class="toolbar-search-button" type="submit">Find</button>
           </form>
           <div class="toolbar-actions">
             <span class="toolbar-status-pill">${escapeHtml(computerDate || "Today")}</span>
