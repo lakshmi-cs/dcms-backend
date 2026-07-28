@@ -194,7 +194,10 @@ function getActiveMeal(mealWindows, totalMinutes) {
     }
   }
 
-  const nextMeal = orderedWindows.find((window) => totalMinutes < parseTimeToMinutes(window.startTime));
+  const nextMealToday = orderedWindows.find(
+    (window) => totalMinutes < parseTimeToMinutes(window.startTime),
+  );
+  const nextMeal = nextMealToday || orderedWindows[0] || null;
 
   return {
     isActive: false,
@@ -203,6 +206,7 @@ function getActiveMeal(mealWindows, totalMinutes) {
     startTime: nextMeal ? nextMeal.startTime : null,
     endTime: nextMeal ? nextMeal.endTime : null,
     timeLabel: nextMeal ? nextMeal.timeLabel : null,
+    nextMealDay: nextMeal ? (nextMealToday ? 'today' : 'tomorrow') : null,
   };
 }
 
