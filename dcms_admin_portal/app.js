@@ -1832,21 +1832,10 @@ function dashboardMarkup() {
       </article>
     </section>
     <section class="module-section">
-      <div class="content-grid content-grid--sidebar">
+      <div class="content-grid content-grid--single">
         <article class="glass-card panel-card">
           ${redemptionsMarkup(redemptions)}
         </article>
-        <div class="page-aside">
-          ${appImpactCardMarkup(
-            "Food feedback",
-            "Students can now submit meal comments and ratings from the Profile tab.",
-            "Use this page to monitor food quality comments alongside coupon activity.",
-            [
-              { label: "Issued", value: String(stats.qrIssuedToday || 0) },
-              { label: "Feedback today", value: String(stats.feedbackToday || mealFeedback.length || 0) },
-            ],
-          )}
-        </div>
       </div>
     </section>
     <section class="module-section">
