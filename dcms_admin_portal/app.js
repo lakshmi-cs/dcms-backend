@@ -419,7 +419,7 @@ async function checkHealth() {
     const data = await api("/health", { auth: false });
     const label = data.activeMeal?.isActive
       ? `${data.activeMeal.mealName} is live`
-      : `Connected · ${data.timeZone}`;
+      : `Connected Â· ${data.timeZone}`;
     setServerStatus(label, "success");
   } catch (error) {
     setServerStatus("Backend unavailable", "danger");
@@ -446,7 +446,7 @@ async function login(username, password) {
 
     state.token = token;
     safeStorageSet(AUTH_STORAGE_KEY, state.token);
-    setServerStatus("Connected · Signing in", "success");
+    setServerStatus("Connected Â· Signing in", "success");
     showFlash("Admin session started", "success");
     await loadDashboard();
   } catch (error) {
@@ -536,7 +536,7 @@ async function loadDashboard(options = {}) {
     setServerStatus(
       dashboard?.activeMeal?.isActive
         ? `${dashboard.activeMeal.mealName} is live`
-        : `Connected · ${content?.timeZone || dashboard?.timeZone || "Backend ready"}`,
+        : `Connected Â· ${content?.timeZone || dashboard?.timeZone || "Backend ready"}`,
       "success",
     );
     if (!isBackgroundRefresh) {
@@ -1068,7 +1068,7 @@ function passwordResetRequestsMarkup(requests) {
                   </td>
                   <td>${escapeHtml(formatDateTime(item.requestedAt))}</td>
                   <td><span class="table-pill ${escapeHtml(item.status)}">${escapeHtml(item.status)}</span></td>
-                  <td>${escapeHtml(item.expiresAt ? formatDateTime(item.expiresAt) : "—")}</td>
+                  <td>${escapeHtml(item.expiresAt ? formatDateTime(item.expiresAt) : "â€”")}</td>
                   <td>
                     <div class="table-actions">
                       ${canManage ? `<button type="button" class="secondary-button compact-button" data-approve-password-reset="${item.id}">${approveLabel}</button>` : ""}
@@ -1288,7 +1288,7 @@ function redemptionMiniListMarkup(redemptions) {
             <div class="activity-mini-item">
               <div>
                 <strong>${escapeHtml(item.studentId)}</strong>
-                <span>${escapeHtml(`${item.couponType} · ${item.mealCode}`)}</span>
+                <span>${escapeHtml(`${item.couponType} Â· ${item.mealCode}`)}</span>
               </div>
               <small>${escapeHtml(formatRelativeTime(item.issuedAt))}</small>
             </div>
