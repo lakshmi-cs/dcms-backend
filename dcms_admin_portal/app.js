@@ -1444,11 +1444,11 @@ function dashboardMarkup() {
       <div class="content-grid content-grid--single">
         ${appImpactCardMarkup(
           "Meal windows and coupon flow",
-            "These settings affect the student app coupon timing and cafeteria operations.",
-            "Students can only generate meal coupons inside active meal windows, and staff validate those tokens against the same live backend.",
-            [
-              { label: "Active meal", value: liveMealLabel },
-              { label: "Meal window", value: liveMealDetail },
+          "These settings are the source of truth for student coupon timing and cafeteria operations.",
+          "The Lunch start/end controls when students can create a new Meal Coupon. The Dinner end controls the Claim Later activation deadline. No separate fixed coupon cutoff is used in the app.",
+          [
+            { label: "Active meal", value: liveMealLabel },
+            { label: "Meal window", value: liveMealDetail },
             { label: "App surface", value: "Home tab + coupon generation" },
           ],
         )}
@@ -1461,7 +1461,7 @@ function dashboardMarkup() {
               <h3>Meal windows</h3>
             </div>
           </div>
-          <p class="panel-copy">Update these hours carefully because they affect live student coupon generation.</p>
+          <p class="panel-copy">Lunch hours control new Meal Coupon claims. Dinner closing time controls how long a Claim Later reservation can be activated. Saving changes updates the student app rules.</p>
           <form id="scheduleForm" class="stacked-form">
             ${mealWindowRows(mealWindows)}
           </form>
