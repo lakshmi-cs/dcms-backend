@@ -3237,3 +3237,338 @@ tbody tr:last-child td {
     animation-iteration-count: 1 !important;
   }
 }
+
+/* Reliable icons and responsive dashboard layout */
+.page-shell.dashboard-mode {
+  width: calc(100vw - 28px);
+  max-width: none;
+}
+
+.dashboard-sidebar {
+  transform: none;
+}
+
+.sidebar-overlay {
+  display: none;
+}
+
+.toolbar-icon-button {
+  display: none;
+}
+
+.nav-icon,
+.admin-quick-action-icon {
+  position: relative;
+}
+
+.nav-icon::before,
+.nav-icon::after,
+.admin-quick-action-icon::before,
+.admin-quick-action-icon::after {
+  content: "";
+  position: absolute;
+  display: block;
+}
+
+.nav-icon--overview::before {
+  width: 6px;
+  height: 6px;
+  top: 9px;
+  left: 9px;
+  border-radius: 2px;
+  color: currentColor;
+  background: currentColor;
+  box-shadow: 10px 0 currentColor, 0 10px currentColor, 10px 10px currentColor;
+}
+
+.nav-icon--service::before,
+.admin-icon--hours::before {
+  width: 16px;
+  height: 16px;
+  inset: 0;
+  margin: auto;
+  border: 2px solid currentColor;
+  border-radius: 50%;
+}
+
+.nav-icon--service::after,
+.admin-icon--hours::after {
+  width: 6px;
+  height: 7px;
+  top: 10px;
+  left: 17px;
+  border-left: 2px solid currentColor;
+  border-bottom: 2px solid currentColor;
+  transform-origin: bottom left;
+  transform: rotate(-12deg);
+}
+
+.nav-icon--menu::before,
+.admin-icon--menu::before {
+  width: 17px;
+  height: 2px;
+  top: 11px;
+  left: 9px;
+  border-radius: 2px;
+  color: currentColor;
+  background: currentColor;
+  box-shadow: 0 6px currentColor, 0 12px currentColor;
+}
+
+.nav-icon--news::before,
+.admin-icon--news::before {
+  width: 16px;
+  height: 19px;
+  inset: 0;
+  margin: auto;
+  border: 2px solid currentColor;
+  border-radius: 3px;
+}
+
+.nav-icon--news::after,
+.admin-icon--news::after {
+  width: 8px;
+  height: 2px;
+  top: 13px;
+  left: 13px;
+  color: currentColor;
+  background: currentColor;
+  box-shadow: 0 5px currentColor;
+}
+
+.nav-icon--activity::before,
+.admin-icon--records::before {
+  width: 8px;
+  height: 8px;
+  top: 7px;
+  left: 13px;
+  border: 2px solid currentColor;
+  border-radius: 50%;
+}
+
+.nav-icon--activity::after,
+.admin-icon--records::after {
+  width: 17px;
+  height: 9px;
+  bottom: 7px;
+  left: 8px;
+  border: 2px solid currentColor;
+  border-bottom: 0;
+  border-radius: 12px 12px 0 0;
+}
+
+.nav-icon--validation::before {
+  width: 16px;
+  height: 9px;
+  top: 9px;
+  left: 8px;
+  border-left: 3px solid currentColor;
+  border-bottom: 3px solid currentColor;
+  transform: rotate(-45deg);
+}
+
+.admin-quick-action-icon {
+  color: var(--accent-strong);
+}
+
+.admin-quick-action-arrow {
+  position: relative;
+  width: 16px;
+  height: 16px;
+}
+
+.admin-quick-action-arrow::before {
+  content: "";
+  position: absolute;
+  width: 8px;
+  height: 8px;
+  top: 3px;
+  left: 1px;
+  border-top: 2px solid currentColor;
+  border-right: 2px solid currentColor;
+  transform: rotate(45deg);
+}
+
+.admin-quick-action-arrow::after {
+  content: "";
+  position: absolute;
+  width: 11px;
+  height: 2px;
+  top: 7px;
+  left: 0;
+  background: currentColor;
+}
+
+@media (min-width: 1101px) {
+  .dashboard-shell {
+    grid-template-columns: 258px minmax(0, 1fr);
+  }
+
+  .dashboard-sidebar,
+  .dashboard-sidebar.is-open {
+    position: sticky;
+    top: 14px;
+    left: auto;
+    bottom: auto;
+    width: auto;
+    transform: none;
+  }
+}
+
+@media (max-width: 1100px) {
+  .page-shell.dashboard-mode {
+    width: calc(100vw - 20px);
+    padding-top: 10px;
+  }
+
+  .dashboard-shell {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .dashboard-sidebar {
+    position: fixed;
+    z-index: 40;
+    top: 10px;
+    bottom: 10px;
+    left: 10px;
+    width: min(310px, calc(100vw - 28px));
+    max-height: none;
+    overflow-y: auto;
+    transform: translateX(calc(-100% - 18px));
+    transition: transform 180ms ease;
+  }
+
+  .dashboard-sidebar.is-open {
+    transform: translateX(0);
+  }
+
+  .sidebar-overlay {
+    position: fixed;
+    z-index: 35;
+    inset: 0;
+    display: block;
+    background: rgba(3, 6, 22, 0.68);
+    backdrop-filter: blur(4px);
+    opacity: 0;
+    pointer-events: none;
+  }
+
+  .sidebar-overlay.is-open {
+    opacity: 1;
+    pointer-events: auto;
+  }
+
+  .toolbar-icon-button {
+    display: grid;
+  }
+
+  .dashboard-stage,
+  .dashboard-toolbar,
+  .dashboard-content,
+  .content-header,
+  .module-section {
+    width: 100%;
+    min-width: 0;
+  }
+
+  .dashboard-toolbar {
+    grid-template-columns: minmax(220px, 1fr) minmax(240px, 1fr);
+  }
+
+  .toolbar-actions {
+    grid-column: 1 / -1;
+  }
+}
+
+@media (max-width: 760px) {
+  .dashboard-toolbar {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 12px;
+  }
+
+  .toolbar-leading,
+  .toolbar-search-shell,
+  .toolbar-actions {
+    width: 100%;
+    min-width: 0;
+  }
+
+  .toolbar-actions {
+    grid-column: auto;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    gap: 9px;
+  }
+
+  .profile-menu {
+    grid-column: 1 / -1;
+    width: 100%;
+  }
+
+  .profile-chip {
+    width: 100%;
+  }
+
+  .content-header,
+  .content-grid,
+  .content-grid--sidebar,
+  .news-layout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .content-heading,
+  .content-meta,
+  .page-aside,
+  .panel-card {
+    min-width: 0;
+  }
+
+  .content-heading h2 {
+    font-size: clamp(2rem, 10vw, 3rem);
+  }
+
+  .content-shortcuts,
+  .content-shortcuts .section-row {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    width: 100%;
+  }
+
+  .content-shortcuts button {
+    width: 100%;
+  }
+}
+
+@media (max-width: 460px) {
+  .page-shell.dashboard-mode {
+    width: calc(100vw - 12px);
+    padding-top: 6px;
+  }
+
+  .dashboard-toolbar,
+  .content-header,
+  .overview-intro-card,
+  .panel-card,
+  .chart-card,
+  .workflow-panel {
+    padding: 15px;
+  }
+
+  .toolbar-context small,
+  .toolbar-status-pill {
+    display: none;
+  }
+
+  .toolbar-actions {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .toolbar-button,
+  .profile-menu {
+    grid-column: 1;
+  }
+
+  .admin-quick-action {
+    grid-template-columns: 40px minmax(0, 1fr) 16px;
+  }
+}

@@ -419,7 +419,7 @@ async function checkHealth() {
     const data = await api("/health", { auth: false });
     const label = data.activeMeal?.isActive
       ? `${data.activeMeal.mealName} is live`
-      : `Connected Â· ${data.timeZone}`;
+      : `Connected · ${data.timeZone}`;
     setServerStatus(label, "success");
   } catch (error) {
     setServerStatus("Backend unavailable", "danger");
@@ -446,7 +446,7 @@ async function login(username, password) {
 
     state.token = token;
     safeStorageSet(AUTH_STORAGE_KEY, state.token);
-    setServerStatus("Connected Â· Signing in", "success");
+    setServerStatus("Connected · Signing in", "success");
     showFlash("Admin session started", "success");
     await loadDashboard();
   } catch (error) {
@@ -536,7 +536,7 @@ async function loadDashboard(options = {}) {
     setServerStatus(
       dashboard?.activeMeal?.isActive
         ? `${dashboard.activeMeal.mealName} is live`
-        : `Connected Â· ${content?.timeZone || dashboard?.timeZone || "Backend ready"}`,
+        : `Connected · ${content?.timeZone || dashboard?.timeZone || "Backend ready"}`,
       "success",
     );
     if (!isBackgroundRefresh) {
@@ -586,7 +586,7 @@ function loginMarkup() {
             </div>
           </div>
           <p class="eyebrow">Cafeteria management dashboard</p>
-          <h2>Run todayâ€™s cafeteria from one clear workspace.</h2>
+          <h2>Run today’s cafeteria from one clear workspace.</h2>
           <p>
             Manage meal hours, publish student content, and review coupon activity with every update flowing directly into the student app.
           </p>
@@ -658,19 +658,10 @@ function detailItemMarkup(label, value) {
   `;
 }
 
-const NAV_ICON_LABELS = {
-  overview: "âŒ‚",
-  service: "â—·",
-  menu: "â‰¡",
-  news: "âœ¦",
-  validation: "âœ“",
-  activity: "â—Ž",
-};
-
 function navLinkMarkup(section) {
   return `
     <a class="dashboard-nav-link ${state.currentPage === section.key ? "is-active" : ""}" data-key="${escapeHtml(section.key)}" href="${escapeHtml(pageUrl(section.key))}">
-      <span class="nav-icon">${escapeHtml(NAV_ICON_LABELS[section.key] || section.label.charAt(0))}</span>
+      <span class="nav-icon nav-icon--${escapeHtml(section.key)}" aria-hidden="true"></span>
       <div class="nav-copy">
         <strong>${escapeHtml(section.label)}</strong>
         <small>${escapeHtml(section.detail)}</small>
@@ -1073,7 +1064,7 @@ function passwordResetRequestsMarkup(requests) {
                   </td>
                   <td>${escapeHtml(formatDateTime(item.requestedAt))}</td>
                   <td><span class="table-pill ${escapeHtml(item.status)}">${escapeHtml(item.status)}</span></td>
-                  <td>${escapeHtml(item.expiresAt ? formatDateTime(item.expiresAt) : "â€”")}</td>
+                  <td>${escapeHtml(item.expiresAt ? formatDateTime(item.expiresAt) : "—")}</td>
                   <td>
                     <div class="table-actions">
                       ${canManage ? `<button type="button" class="secondary-button compact-button" data-approve-password-reset="${item.id}">${approveLabel}</button>` : ""}
@@ -1293,7 +1284,7 @@ function redemptionMiniListMarkup(redemptions) {
             <div class="activity-mini-item">
               <div>
                 <strong>${escapeHtml(item.studentId)}</strong>
-                <span>${escapeHtml(`${item.couponType} Â· ${item.mealCode}`)}</span>
+                <span>${escapeHtml(`${item.couponType} · ${item.mealCode}`)}</span>
               </div>
               <small>${escapeHtml(formatRelativeTime(item.issuedAt))}</small>
             </div>
@@ -1482,24 +1473,24 @@ function dashboardMarkup() {
 
       <nav class="admin-quick-actions" aria-label="Common admin actions">
         <a class="admin-quick-action admin-quick-action--hours" href="${escapeHtml(pageUrl("service"))}">
-          <span class="admin-quick-action-icon">â—·</span>
+          <span class="admin-quick-action-icon admin-icon--hours" aria-hidden="true"></span>
           <span><strong>Meal hours</strong><small>Update service windows</small></span>
-          <span class="admin-quick-action-arrow">â†’</span>
+          <span class="admin-quick-action-arrow" aria-hidden="true"></span>
         </a>
         <a class="admin-quick-action admin-quick-action--menu" href="${escapeHtml(pageUrl("menu"))}">
-          <span class="admin-quick-action-icon">â‰¡</span>
-          <span><strong>Publish menu</strong><small>Edit todayâ€™s meals</small></span>
-          <span class="admin-quick-action-arrow">â†’</span>
+          <span class="admin-quick-action-icon admin-icon--menu" aria-hidden="true"></span>
+          <span><strong>Publish menu</strong><small>Edit today’s meals</small></span>
+          <span class="admin-quick-action-arrow" aria-hidden="true"></span>
         </a>
         <a class="admin-quick-action admin-quick-action--news" href="${escapeHtml(pageUrl("news"))}">
-          <span class="admin-quick-action-icon">âœ¦</span>
+          <span class="admin-quick-action-icon admin-icon--news" aria-hidden="true"></span>
           <span><strong>Send notice</strong><small>Update student news</small></span>
-          <span class="admin-quick-action-arrow">â†’</span>
+          <span class="admin-quick-action-arrow" aria-hidden="true"></span>
         </a>
         <a class="admin-quick-action admin-quick-action--records" href="${escapeHtml(pageUrl("activity"))}">
-          <span class="admin-quick-action-icon">â—Ž</span>
+          <span class="admin-quick-action-icon admin-icon--records" aria-hidden="true"></span>
           <span><strong>Student records</strong><small>Review activity</small></span>
-          <span class="admin-quick-action-arrow">â†’</span>
+          <span class="admin-quick-action-arrow" aria-hidden="true"></span>
         </a>
       </nav>
 
@@ -1605,7 +1596,7 @@ function dashboardMarkup() {
       "Student content",
       "Daily Menu",
       "This page is only for today's menu. Publish clean meal items here without mixing them with news tasks.",
-      `<button type="button" class="primary-button compact-primary-button" id="saveMenusButton">Publish todayâ€™s menu</button>`,
+      `<button type="button" class="primary-button compact-primary-button" id="saveMenusButton">Publish today’s menu</button>`,
       `Student app reads these items from the shared backend after refresh.`,
     )}
     <section class="module-section">
