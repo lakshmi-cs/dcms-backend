@@ -94,7 +94,7 @@ const state = {
   recordQuery: "",
   recordStatus: "all",
   recordPage: 1,
-  recordPageSize: 25,
+  recordPageSize: 15,
 };
 
 const appRoot = document.getElementById("appRoot");
@@ -537,7 +537,7 @@ function startDashboardAutoRefresh() {
 
   state.autoRefreshHandle = window.setInterval(() => {
     const currentPageKey = getCurrentPageKey();
-    const autoRefreshEnabledPages = new Set(["overview", "activity"]);
+    const autoRefreshEnabledPages = new Set(["overview"]);
 
     if (
       document.hidden ||

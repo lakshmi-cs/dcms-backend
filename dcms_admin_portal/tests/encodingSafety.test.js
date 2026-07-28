@@ -17,3 +17,16 @@ test("admin portal source does not contain common UTF-8 mojibake", () => {
     );
   }
 });
+
+test("student record controls remain stable while an administrator is typing", () => {
+  const appSource = fs.readFileSync(
+    path.join(__dirname, "..", "app.js"),
+    "utf8",
+  );
+
+  assert.match(appSource, /recordPageSize:\s*15/);
+  assert.match(
+    appSource,
+    /autoRefreshEnabledPages\s*=\s*new Set\(\["overview"\]\)/,
+  );
+});
