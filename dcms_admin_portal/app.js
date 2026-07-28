@@ -566,6 +566,17 @@ function loginMarkup() {
     <section class="login-shell">
       <div class="login-panel glass-card">
         <div class="login-copy">
+          <div class="login-brand">
+            <img
+              class="login-brand-logo"
+              src="./assets/aimst-university-logo.png"
+              alt="AIMST University logo"
+            />
+            <div class="login-brand-copy">
+              <strong>AIMST University</strong>
+              <span>DCMS Admin Portal</span>
+            </div>
+          </div>
           <p class="eyebrow">Cafeteria management dashboard</p>
           <h2>Manage meal hours, live QR service, daily menus, and student notices.</h2>
           <p>

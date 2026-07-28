@@ -226,6 +226,39 @@ button {
   padding: 10px 8px 10px 4px;
 }
 
+.login-brand {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  margin-bottom: 28px;
+}
+
+.login-brand-logo {
+  width: 88px;
+  height: 88px;
+  flex: 0 0 88px;
+  object-fit: contain;
+  filter: drop-shadow(0 12px 24px rgba(0, 184, 190, 0.18));
+}
+
+.login-brand-copy {
+  display: grid;
+  gap: 4px;
+}
+
+.login-brand-copy strong {
+  color: var(--text);
+  font-size: 1.15rem;
+  letter-spacing: 0.02em;
+}
+
+.login-brand-copy span {
+  color: var(--muted);
+  font-size: 0.9rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
 .login-copy h2 {
   font-size: clamp(2rem, 4vw, 3.6rem);
   line-height: 1.05;
@@ -2353,6 +2386,12 @@ code {
 
   .auth-form {
     padding: 20px;
+  }
+
+  .login-brand-logo {
+    width: 72px;
+    height: 72px;
+    flex-basis: 72px;
   }
 
   .news-actions,
