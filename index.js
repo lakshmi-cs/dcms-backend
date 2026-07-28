@@ -26,7 +26,7 @@ const ECONOMY_COUPON_ADD_ON_ALIASES = {
 
 app.use(cors());
 app.use(bodyParser.json());
-app.use(express.static('dcms_admin_portal')); 
+app.use(express.static('dcms_admin_portal'));
 
 const db = mysql.createPool({
   host: process.env.TIDB_HOST,
@@ -109,6 +109,13 @@ function parseTimeToMinutes(timeValue) {
   return Number(hours) * 60 + Number(minutes);
 }
 
+function isValidMealTime(timeValue) {
+  const match = /^([01]\d|2[0-3]):([0-5]\d)(?::([0-5]\d))?$/.exec(
+    String(timeValue || '').trim(),
+  );
+  return Boolean(match);
+}
+
 function toTimeLabel(timeValue) {
   const [hoursText = '0', minutesText = '0'] = String(timeValue || '00:00:00').split(':');
   const hours = Number(hoursText);
@@ -182,6 +189,77 @@ function getActiveMeal(mealWindows, totalMinutes) {
     endTime: nextMeal ? nextMeal.endTime : null,
     timeLabel: nextMeal ? nextMeal.timeLabel : null,
   };
+}
+
+function minutesToTimeString(totalMinutes) {
+  const normalizedMinutes = Math.max(0, Math.min(totalMinutes, (24 * 60) - 1));
+  const hours = Math.floor(normalizedMinutes / 60);
+  const minutes = normalizedMinutes % 60;
+  return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:00`;
+}
+
+function getMealReservationEndMinutes(mealWindows = []) {
+  const dinnerWindow = mealWindows.find(
+    (window) => String(window.mealCode || '').toLowerCase() === 'dinner',
+  );
+  if (dinnerWindow && isValidMealTime(dinnerWindow.endTime)) {
+    return parseTimeToMinutes(dinnerWindow.endTime);
+  }
+  return null;
+}
+
+function getMealClaimWindow(nowParts = getZonedNowParts(), mealWindows = []) {
+  const date = nowParts.date;
+  const lunchWindow = mealWindows.find(
+    (window) => String(window.mealCode || '').toLowerCase() === 'lunch',
+  );
+  const hasLunchWindow =
+    lunchWindow &&
+    isValidMealTime(lunchWindow.startTime) &&
+    isValidMealTime(lunchWindow.endTime);
+  const claimStartMinutes = hasLunchWindow
+    ? parseTimeToMinutes(lunchWindow.startTime)
+    : null;
+  const initialClaimEndMinutes = hasLunchWindow
+    ? parseTimeToMinutes(lunchWindow.endTime)
+    : null;
+  const reservationEndMinutes = getMealReservationEndMinutes(mealWindows);
+  const isConfigured =
+    claimStartMinutes != null &&
+    initialClaimEndMinutes != null &&
+    reservationEndMinutes != null;
+  const isInitialClaimOpen = isConfigured &&
+    nowParts.totalMinutes >= claimStartMinutes &&
+    nowParts.totalMinutes <= initialClaimEndMinutes;
+  const isActivationOpen = isConfigured &&
+    nowParts.totalMinutes >= claimStartMinutes &&
+    nowParts.totalMinutes <= reservationEndMinutes;
+  return {
+    startsAt: isConfigured
+      ? `${date} ${minutesToTimeString(claimStartMinutes)}`
+      : null,
+    initialClaimEndsAt: isConfigured
+      ? `${date} ${minutesToTimeString(initialClaimEndMinutes)}`
+      : null,
+    endsAt: isConfigured
+      ? `${date} ${minutesToTimeString(reservationEndMinutes)}`
+      : null,
+    isConfigured,
+    isBefore: isConfigured && nowParts.totalMinutes < claimStartMinutes,
+    isInitialClaimOpen,
+    isActivationOpen,
+    isOpen: isActivationOpen,
+    isAfter: isConfigured && nowParts.totalMinutes > initialClaimEndMinutes,
+  };
+}
+
+function normalizeResponseCouponStatus(status) {
+  const normalized = String(status || '').trim().toLowerCase();
+  if (normalized === 'claimed') return 'CLAIMED';
+  if (normalized === 'issued' || normalized === 'active') return 'ACTIVE';
+  if (normalized === 'redeemed') return 'REDEEMED';
+  if (normalized === 'expired') return 'EXPIRED';
+  return String(status || '').toUpperCase();
 }
 
 function sanitizeCouponType(value) {
@@ -309,20 +387,90 @@ async function initialiseDatabase() {
       coupon_type VARCHAR(30) NOT NULL,
       meal_code VARCHAR(30) NOT NULL,
       add_ons JSON NULL,
-      token TEXT NOT NULL,
-      token_signature VARCHAR(64) NOT NULL,
+      meal_date DATE NULL,
+      claim_option VARCHAR(10) NULL,
+      token TEXT NULL,
+      token_signature VARCHAR(64) NULL,
+      claimed_at DATETIME NULL,
+      activated_at DATETIME NULL,
+      deadline_at DATETIME NULL,
       issued_at DATETIME NOT NULL,
       expires_at DATETIME NOT NULL,
       redeemed_at DATETIME NULL,
       redeemed_by VARCHAR(120) NULL,
       status VARCHAR(20) DEFAULT 'issued',
-      UNIQUE KEY unique_token_signature (token_signature)
+      UNIQUE KEY unique_token_signature (token_signature),
+      UNIQUE KEY unique_student_coupon_per_meal (
+        student_id,
+        coupon_type,
+        meal_date,
+        meal_code
+      ),
+      UNIQUE KEY unique_student_meal_claim (
+        student_id,
+        meal_date,
+        meal_code
+      )
     )
   `);
 
   await dbQuery(`
     ALTER TABLE coupon_redemptions
     ADD COLUMN IF NOT EXISTS add_ons JSON NULL
+  `).catch(() => {});
+
+  await dbQuery(`
+    ALTER TABLE coupon_redemptions
+    ADD COLUMN IF NOT EXISTS meal_date DATE NULL
+  `).catch(() => {});
+
+  await dbQuery(`
+    ALTER TABLE coupon_redemptions
+    ADD COLUMN IF NOT EXISTS claim_option VARCHAR(10) NULL
+  `).catch(() => {});
+
+  await dbQuery(`
+    ALTER TABLE coupon_redemptions
+    ADD COLUMN IF NOT EXISTS claimed_at DATETIME NULL
+  `).catch(() => {});
+
+  await dbQuery(`
+    ALTER TABLE coupon_redemptions
+    ADD COLUMN IF NOT EXISTS activated_at DATETIME NULL
+  `).catch(() => {});
+
+  await dbQuery(`
+    ALTER TABLE coupon_redemptions
+    ADD COLUMN IF NOT EXISTS deadline_at DATETIME NULL
+  `).catch(() => {});
+
+  await dbQuery(`
+    ALTER TABLE coupon_redemptions
+    MODIFY COLUMN token TEXT NULL
+  `).catch(() => {});
+
+  await dbQuery(`
+    ALTER TABLE coupon_redemptions
+    MODIFY COLUMN token_signature VARCHAR(64) NULL
+  `).catch(() => {});
+
+  await dbQuery(`
+    ALTER TABLE coupon_redemptions
+    ADD UNIQUE KEY unique_student_coupon_per_meal (
+      student_id,
+      coupon_type,
+      meal_date,
+      meal_code
+    )
+  `).catch(() => {});
+
+  await dbQuery(`
+    ALTER TABLE coupon_redemptions
+    ADD UNIQUE KEY unique_student_meal_claim (
+      student_id,
+      meal_date,
+      meal_code
+    )
   `).catch(() => {});
 
   const now = getZonedNowParts();
@@ -477,44 +625,128 @@ async function getMealFeedback(limit = 100) {
   return rows;
 }
 
+async function expireStaleCouponRows(nowParts = getZonedNowParts()) {
+  await dbQuery(
+    `
+      UPDATE coupon_redemptions
+      SET status = 'expired'
+      WHERE status = 'claimed'
+        AND deadline_at IS NOT NULL
+        AND deadline_at < ?
+    `,
+    [nowParts.dateTime],
+  );
+
+  await dbQuery(
+    `
+      UPDATE coupon_redemptions
+      SET status = 'expired'
+      WHERE status IN ('issued', 'active')
+        AND expires_at IS NOT NULL
+        AND expires_at < ?
+    `,
+    [nowParts.dateTime],
+  );
+}
+
+function mapCouponRow(row) {
+  const status = normalizeResponseCouponStatus(row.status);
+  return {
+    ...row,
+    status,
+    couponCode: row.couponCode || row.token || null,
+    addOns: normalizeCouponAddOns(row.addOnsRaw),
+    add_ons: normalizeCouponAddOns(row.addOnsRaw),
+  };
+}
+
 async function getRecentRedemptions(selectedDate) {
+  await expireStaleCouponRows();
   const rows = await dbQuery(
     `
       SELECT
         id,
+        id AS couponId,
         student_id AS studentId,
         coupon_type AS couponType,
         ${getCouponAddOnsSelectSql('addOnsRaw')},
         meal_code AS mealCode,
+        meal_date AS mealDate,
+        claim_option AS claimOption,
+        token AS token,
         issued_at AS issuedAt,
+        claimed_at AS claimedAt,
+        activated_at AS activatedAt,
         expires_at AS expiresAt,
+        deadline_at AS deadlineAt,
         redeemed_at AS redeemedAt,
         redeemed_by AS redeemedBy,
         status
       FROM coupon_redemptions
-      WHERE DATE(issued_at) = ?
+      WHERE COALESCE(meal_date, DATE(issued_at)) = ?
       ORDER BY COALESCE(redeemed_at, issued_at) DESC
       LIMIT 20
     `,
     [selectedDate],
   );
 
-  return rows.map((row) => ({
-    ...row,
-    addOns: normalizeCouponAddOns(row.addOnsRaw),
-    add_ons: normalizeCouponAddOns(row.addOnsRaw),
-  }));
+  return rows.map(mapCouponRow);
+}
+
+async function getStudentCoupons(studentId) {
+  await expireStaleCouponRows();
+  const rows = await dbQuery(
+    `
+      SELECT
+        id,
+        id AS couponId,
+        student_id AS studentId,
+        coupon_type AS couponType,
+        ${getCouponAddOnsSelectSql('addOnsRaw')},
+        meal_code AS mealCode,
+        meal_date AS mealDate,
+        claim_option AS claimOption,
+        token AS token,
+        issued_at AS issuedAt,
+        claimed_at AS claimedAt,
+        activated_at AS activatedAt,
+        expires_at AS expiresAt,
+        deadline_at AS deadlineAt,
+        redeemed_at AS redeemedAt,
+        redeemed_by AS redeemedBy,
+        status
+      FROM coupon_redemptions
+      WHERE student_id = ?
+      ORDER BY issued_at DESC
+      LIMIT 50
+    `,
+    [studentId],
+  );
+
+  return rows.map(mapCouponRow);
 }
 
 async function buildAppPayload(studentId) {
   const now = getZonedNowParts();
-  const [mealWindows, menus, news] = await Promise.all([
+  const [mealWindows, menus, news, studentCoupons] = await Promise.all([
     getMealWindows(),
     getMenusForDate(now.date),
     getPublishedNews(now.dateTime),
+    getStudentCoupons(studentId),
   ]);
 
   const activeMeal = getActiveMeal(mealWindows, now.totalMinutes);
+  const mealClaimWindow = getMealClaimWindow(now, mealWindows);
+  const todayCoupons = studentCoupons.filter(
+    (coupon) => (coupon.mealDate || String(coupon.issuedAt || '').slice(0, 10)) === now.date,
+  );
+  const latestCoupons = [];
+  const latestByType = new Set();
+  for (const coupon of todayCoupons) {
+    if (latestByType.has(coupon.couponType)) continue;
+    latestCoupons.push(coupon);
+    latestByType.add(coupon.couponType);
+  }
   const users = await dbQuery(
     `
       SELECT
@@ -538,6 +770,15 @@ async function buildAppPayload(studentId) {
     menus,
     news,
     user: users[0] || null,
+    mealClaimWindow,
+    latestCoupons,
+    availableCoupons: todayCoupons.filter(
+      (coupon) => coupon.status === 'CLAIMED' || coupon.status === 'ACTIVE',
+    ),
+    usedCoupons: studentCoupons.filter(
+      (coupon) => coupon.status === 'REDEEMED' || coupon.status === 'EXPIRED',
+    ),
+    couponHistory: studentCoupons,
   };
 }
 
@@ -760,6 +1001,8 @@ app.post('/feedback', async (req, res) => {
 
 app.post('/coupons/issue', async (req, res) => {
   const { studentId, couponType } = req.body;
+  const claimOption = String(req.body.claimOption || 'NOW').trim().toUpperCase();
+  const requestedCouponId = req.body.couponId ?? req.body.id;
   const addOns = req.body.addOns ?? req.body.add_ons ?? req.body.addons;
   const normalizedCouponType = sanitizeCouponType(couponType);
 
@@ -770,14 +1013,52 @@ app.post('/coupons/issue', async (req, res) => {
 
   try {
     const now = getZonedNowParts();
+    await expireStaleCouponRows(now);
     const mealWindows = await getMealWindows();
     const activeMeal = getActiveMeal(mealWindows, now.totalMinutes);
+    const mealClaimWindow = getMealClaimWindow(now, mealWindows);
     const requestedAddOns = normalizeCouponAddOns(addOns);
+    const lunchMeal =
+      mealWindows.find((window) => String(window.mealCode || '').toLowerCase() === 'lunch');
 
-    if (!activeMeal.isActive) {
+    if (!lunchMeal || !mealClaimWindow.isConfigured) {
+      res.status(503).json({
+        status: 'error',
+        message: 'Meal Coupon timing is not configured. Please ask an administrator to update Lunch and Dinner hours.',
+      });
+      return;
+    }
+
+    if (
+      normalizedCouponType === 'Coupon' &&
+      !requestedCouponId &&
+      !mealClaimWindow.isInitialClaimOpen
+    ) {
+      res.status(400).json({
+        status: 'error',
+        message: mealClaimWindow.isBefore
+          ? `Meal Coupon claiming opens at ${toTimeLabel(lunchMeal.startTime)}.`
+          : `Today's Meal Coupon claiming ended at ${toTimeLabel(lunchMeal.endTime)}.`,
+      });
+      return;
+    }
+
+    if (claimOption === 'LATER' && normalizedCouponType !== 'Coupon') {
+      res.status(400).json({ status: 'error', message: 'Claim Later is only available for Meal Coupon.' });
+      return;
+    }
+
+    if (claimOption !== 'NOW' && claimOption !== 'LATER') {
+      res.status(400).json({ status: 'error', message: 'Claim option must be NOW or LATER.' });
+      return;
+    }
+
+    if (normalizedCouponType !== 'Coupon' && !activeMeal.isActive) {
       res.status(400).json({ status: 'error', message: 'Coupons can only be generated during cafeteria operating hours' });
       return;
     }
+
+    const couponMeal = normalizedCouponType === 'Coupon' ? lunchMeal : activeMeal;
 
     const shouldPersistAddOns =
       normalizedCouponType === 'Economy' &&
@@ -795,26 +1076,392 @@ app.post('/coupons/issue', async (req, res) => {
       return;
     }
 
+    const isLunchClaim =
+      !requestedCouponId &&
+      String(couponMeal.mealCode || '').toLowerCase() === 'lunch';
+    if (isLunchClaim) {
+      const lunchCouponRows = await dbQuery(
+        `
+          SELECT id, coupon_type AS couponType, status
+          FROM coupon_redemptions
+          WHERE student_id = ?
+            AND COALESCE(meal_date, DATE(issued_at)) = ?
+            AND meal_code = 'lunch'
+          LIMIT 1
+        `,
+        [studentId, now.date],
+      );
+
+      if (lunchCouponRows.length > 0) {
+        res.status(409).json({
+          status: 'error',
+          message: "You have already claimed today's lunch coupon. Only one coupon can be claimed during lunch.",
+        });
+        return;
+      }
+    }
+
     const existingRows = await dbQuery(
-      `
-        SELECT status
-        FROM coupon_redemptions
-        WHERE student_id = ?
-          AND coupon_type = ?
-          AND meal_code = ?
-          AND DATE(issued_at) = ?
-          AND status IN ('issued', 'redeemed')
-        LIMIT 1
-      `,
-      [studentId, normalizedCouponType, activeMeal.mealCode, now.date],
+      normalizedCouponType === 'Coupon' && requestedCouponId
+        ? `
+          SELECT
+            id,
+            status,
+            meal_code AS mealCode,
+            meal_date AS mealDate,
+            claimed_at AS claimedAt,
+            deadline_at AS deadlineAt
+          FROM coupon_redemptions
+          WHERE id = ?
+            AND student_id = ?
+            AND coupon_type = ?
+          LIMIT 1
+        `
+        : normalizedCouponType === 'Coupon'
+        ? `
+          SELECT
+            id,
+            status,
+            meal_code AS mealCode,
+            meal_date AS mealDate,
+            claimed_at AS claimedAt,
+            deadline_at AS deadlineAt
+          FROM coupon_redemptions
+          WHERE student_id = ?
+            AND coupon_type = ?
+            AND COALESCE(meal_date, DATE(issued_at)) = ?
+          LIMIT 1
+        `
+        : `
+          SELECT id, status
+          FROM coupon_redemptions
+          WHERE student_id = ?
+            AND coupon_type = ?
+            AND meal_code = ?
+            AND DATE(issued_at) = ?
+          LIMIT 1
+        `,
+      normalizedCouponType === 'Coupon' && requestedCouponId
+        ? [requestedCouponId, studentId, normalizedCouponType]
+        : normalizedCouponType === 'Coupon'
+        ? [studentId, normalizedCouponType, now.date]
+        : [studentId, normalizedCouponType, couponMeal.mealCode, now.date],
     );
 
-    if (existingRows.length > 0) {
-      const message = existingRows[0].status === 'redeemed'
-        ? `This ${activeMeal.mealName.toLowerCase()} ${normalizedCouponType.toLowerCase()} has already been redeemed today`
-        : `This ${activeMeal.mealName.toLowerCase()} ${normalizedCouponType.toLowerCase()} QR has already been issued today`;
+    if (requestedCouponId && existingRows.length === 0) {
+      res.status(404).json({ status: 'error', message: 'Meal reservation not found' });
+      return;
+    }
 
-      res.status(409).json({ status: 'error', message });
+    if (existingRows.length > 0) {
+      const existingStatus = String(existingRows[0].status || '').toLowerCase();
+      if (
+        normalizedCouponType === 'Coupon' &&
+        claimOption === 'NOW' &&
+        existingStatus === 'claimed'
+      ) {
+        const reservation = existingRows[0];
+        if (reservation.deadlineAt && now.dateTime > reservation.deadlineAt) {
+          await dbQuery('UPDATE coupon_redemptions SET status = ? WHERE id = ?', ['expired', reservation.id]);
+          res.status(400).json({
+            status: 'error',
+            message: 'Meal reservation expired. Not activated before cafeteria closing time.',
+          });
+          return;
+        }
+
+        const reservationMeal =
+          mealWindows.find((window) => window.mealCode === reservation.mealCode) ||
+          lunchMeal;
+        const activatedAtDate = new Date();
+        const activatedAtParts = getZonedNowParts(activatedAtDate);
+        const activatedExpiresAtDate = new Date(
+          activatedAtDate.getTime() + COUPON_TOKEN_TTL_MINUTES * 60 * 1000,
+        );
+        const activatedExpiresAtParts = getZonedNowParts(activatedExpiresAtDate);
+        const tokenPayload = {
+          studentId,
+          couponType: normalizedCouponType,
+          mealCode: reservationMeal.mealCode,
+          mealName: reservationMeal.mealName,
+          issuedAt: activatedAtParts.dateTime,
+          expiresAt: activatedExpiresAtParts.dateTime,
+          nonce: crypto.randomBytes(8).toString('hex'),
+        };
+        const token = createSignedToken(tokenPayload, COUPON_TOKEN_SECRET, 'dcms-coupon');
+        const tokenSignature = crypto.createHash('sha256').update(token).digest('hex');
+
+        await dbQuery(
+          `
+            UPDATE coupon_redemptions
+            SET
+              meal_code = ?,
+              token = ?,
+              token_signature = ?,
+              claim_option = 'NOW',
+              activated_at = ?,
+              expires_at = ?,
+              status = 'issued'
+            WHERE id = ?
+          `,
+          [
+            reservationMeal.mealCode,
+            token,
+            tokenSignature,
+            activatedAtParts.dateTime,
+            activatedExpiresAtParts.dateTime,
+            reservation.id,
+          ],
+        );
+
+        res.json({
+          status: 'success',
+          data: {
+            couponId: reservation.id,
+            token,
+            couponType: normalizedCouponType,
+            meal: reservationMeal,
+            mealCode: reservationMeal.mealCode,
+            mealDate: reservation.mealDate || now.date,
+            claimOption: 'NOW',
+            claimedAt: reservation.claimedAt,
+            activatedAt: activatedAtParts.dateTime,
+            issuedAt: activatedAtParts.dateTime,
+            expiresAt: activatedExpiresAtParts.dateTime,
+            deadlineAt: reservation.deadlineAt,
+            ttlMinutes: COUPON_TOKEN_TTL_MINUTES,
+            status: 'ACTIVE',
+          },
+        });
+        return;
+      }
+
+      const message = existingStatus === 'redeemed'
+        ? `This ${couponMeal.mealName.toLowerCase()} ${normalizedCouponType.toLowerCase()} has already been redeemed today`
+        : existingStatus === 'expired'
+          ? `This ${couponMeal.mealName.toLowerCase()} ${normalizedCouponType.toLowerCase()} was already claimed today and has expired`
+        : existingStatus === 'claimed'
+          ? "Today's meal has already been claimed. Open it from the Coupons tab to activate it."
+          : `This ${couponMeal.mealName.toLowerCase()} ${normalizedCouponType.toLowerCase()} QR has already been issued today`;
+
+      const existingCoupons = await getStudentCoupons(studentId);
+      const existingCoupon = existingCoupons.find(
+        (coupon) => String(coupon.couponId) === String(existingRows[0].id),
+      );
+      res.status(409).json({
+        status: 'error',
+        message,
+        data: existingCoupon || null,
+      });
+      return;
+    }
+
+    const issuedAtDate = new Date();
+    const issuedAtParts = getZonedNowParts(issuedAtDate);
+    const deadlineAt = mealClaimWindow.endsAt;
+
+    if (claimOption === 'LATER') {
+      const insertResult = await dbQuery(
+        `
+          INSERT INTO coupon_redemptions (
+            student_id,
+            coupon_type,
+            meal_code,
+            meal_date,
+            claim_option,
+            claimed_at,
+            issued_at,
+            expires_at,
+            deadline_at,
+            status
+          ) VALUES (?, ?, ?, ?, 'LATER', ?, ?, ?, ?, 'claimed')
+        `,
+        [
+          studentId,
+          normalizedCouponType,
+          couponMeal.mealCode || 'lunch',
+          now.date,
+          now.dateTime,
+          now.dateTime,
+          deadlineAt,
+          deadlineAt,
+        ],
+      );
+
+      res.json({
+        status: 'success',
+        data: {
+          couponId: insertResult?.insertId,
+          couponType: normalizedCouponType,
+          mealCode: couponMeal.mealCode || 'lunch',
+          meal: couponMeal,
+          mealDate: now.date,
+          claimOption: 'LATER',
+          claimedAt: now.dateTime,
+          issuedAt: now.dateTime,
+          deadlineAt,
+          expiresAt: deadlineAt,
+          status: 'CLAIMED',
+        },
+      });
+      return;
+    }
+
+    const expiresAtDate = new Date(issuedAtDate.getTime() + COUPON_TOKEN_TTL_MINUTES * 60 * 1000);
+    const expiresAtParts = getZonedNowParts(expiresAtDate);
+
+    const tokenPayload = {
+      studentId,
+      couponType: normalizedCouponType,
+      mealCode: couponMeal.mealCode,
+      mealName: couponMeal.mealName,
+      issuedAt: issuedAtParts.dateTime,
+      expiresAt: expiresAtParts.dateTime,
+      nonce: crypto.randomBytes(8).toString('hex'),
+    };
+
+    const token = createSignedToken(tokenPayload, COUPON_TOKEN_SECRET, 'dcms-coupon');
+    const tokenSignature = crypto.createHash('sha256').update(token).digest('hex');
+
+    const insertResult = await dbQuery(
+      `
+        INSERT INTO coupon_redemptions (
+          student_id,
+          coupon_type,
+          meal_code,
+          add_ons,
+          meal_date,
+          claim_option,
+          token,
+          token_signature,
+          activated_at,
+          issued_at,
+          expires_at,
+          deadline_at,
+          status
+        ) VALUES (?, ?, ?, ?, ?, 'NOW', ?, ?, ?, ?, ?, ?, 'issued')
+      `,
+      [
+        studentId,
+        normalizedCouponType,
+        couponMeal.mealCode,
+        normalizedCouponType === 'Economy' ? JSON.stringify(normalizedAddOns) : null,
+        now.date,
+        token,
+        tokenSignature,
+        issuedAtParts.dateTime,
+        issuedAtParts.dateTime,
+        expiresAtParts.dateTime,
+        deadlineAt,
+      ],
+    );
+
+    res.json({
+      status: 'success',
+      data: {
+        couponId: insertResult?.insertId,
+        token,
+        couponType: normalizedCouponType,
+        addOns: normalizedCouponType === 'Economy' ? normalizedAddOns : [],
+        add_ons: normalizedCouponType === 'Economy' ? normalizedAddOns : [],
+        meal: couponMeal,
+        mealCode: couponMeal.mealCode,
+        mealDate: now.date,
+        claimOption: 'NOW',
+        issuedAt: issuedAtParts.dateTime,
+        activatedAt: issuedAtParts.dateTime,
+        expiresAt: expiresAtParts.dateTime,
+        deadlineAt,
+        ttlMinutes: COUPON_TOKEN_TTL_MINUTES,
+        status: 'ACTIVE',
+      },
+    });
+  } catch (error) {
+    console.error('Coupon issue error:', error);
+    if (error?.code === 'ER_DUP_ENTRY') {
+      res.status(409).json({
+        status: 'error',
+        message: 'You have already claimed a coupon for this meal today.',
+      });
+      return;
+    }
+    res.status(500).json({ status: 'error', message: `Unable to issue coupon: ${error.message}` });
+  }
+});
+
+app.post('/coupons/activate', async (req, res) => {
+  const studentId = String(req.body.studentId || '').trim();
+  const couponId = req.body.couponId;
+
+  if (!studentId || !couponId) {
+    res.status(400).json({ status: 'error', message: 'Student ID and coupon ID are required' });
+    return;
+  }
+
+  try {
+    const now = getZonedNowParts();
+    await expireStaleCouponRows(now);
+
+    const mealWindows = await getMealWindows();
+    const mealClaimWindow = getMealClaimWindow(now, mealWindows);
+    if (!mealClaimWindow.isConfigured) {
+      res.status(503).json({
+        status: 'error',
+        message: 'Meal Coupon timing is not configured. Please ask an administrator to update Lunch and Dinner hours.',
+      });
+      return;
+    }
+    if (!mealClaimWindow.isOpen) {
+      res.status(400).json({
+        status: 'error',
+        message: mealClaimWindow.isBefore
+          ? `Meal Coupon activation opens at ${toTimeLabel(mealWindows.find(
+              (window) => String(window.mealCode || '').toLowerCase() === 'lunch',
+            )?.startTime)}.`
+          : `Meal reservation expired at ${toTimeLabel(mealWindows.find(
+              (window) => String(window.mealCode || '').toLowerCase() === 'dinner',
+            )?.endTime)}.`,
+      });
+      return;
+    }
+
+    const activeMeal = getActiveMeal(mealWindows, now.totalMinutes);
+
+    const rows = await dbQuery(
+      `
+        SELECT
+          id,
+          student_id AS studentId,
+          coupon_type AS couponType,
+          meal_code AS mealCode,
+          meal_date AS mealDate,
+          claim_option AS claimOption,
+          claimed_at AS claimedAt,
+          deadline_at AS deadlineAt,
+          status
+        FROM coupon_redemptions
+        WHERE id = ?
+          AND student_id = ?
+          AND coupon_type = 'Coupon'
+        LIMIT 1
+      `,
+      [couponId, studentId],
+    );
+
+    const reservation = rows[0];
+    if (!reservation) {
+      res.status(404).json({ status: 'error', message: 'Meal reservation not found' });
+      return;
+    }
+
+    if (String(reservation.status || '').toLowerCase() !== 'claimed') {
+      res.status(409).json({ status: 'error', message: 'This meal coupon is no longer waiting for activation.' });
+      return;
+    }
+
+    if (reservation.deadlineAt && now.dateTime > reservation.deadlineAt) {
+      await dbQuery('UPDATE coupon_redemptions SET status = ? WHERE id = ?', ['expired', reservation.id]);
+      res.status(400).json({ status: 'error', message: 'Meal reservation expired. Not activated before cafeteria closing time.' });
       return;
     }
 
@@ -822,12 +1469,22 @@ app.post('/coupons/issue', async (req, res) => {
     const expiresAtDate = new Date(issuedAtDate.getTime() + COUPON_TOKEN_TTL_MINUTES * 60 * 1000);
     const issuedAtParts = getZonedNowParts(issuedAtDate);
     const expiresAtParts = getZonedNowParts(expiresAtDate);
+    const reservationMeal =
+      mealWindows.find((window) => window.mealCode === reservation.mealCode) ||
+      (activeMeal.isActive ? activeMeal : null) ||
+      {
+        mealCode: reservation.mealCode || 'lunch',
+        mealName: 'Lunch',
+        timeLabel: reservation.deadlineAt
+          ? `Valid until ${reservation.deadlineAt.slice(11, 16)}`
+          : 'Valid until cafeteria closing time',
+      };
 
     const tokenPayload = {
       studentId,
-      couponType: normalizedCouponType,
-      mealCode: activeMeal.mealCode,
-      mealName: activeMeal.mealName,
+      couponType: 'Coupon',
+      mealCode: reservationMeal.mealCode,
+      mealName: reservationMeal.mealName,
       issuedAt: issuedAtParts.dateTime,
       expiresAt: expiresAtParts.dateTime,
       nonce: crypto.randomBytes(8).toString('hex'),
@@ -838,46 +1495,49 @@ app.post('/coupons/issue', async (req, res) => {
 
     await dbQuery(
       `
-        INSERT INTO coupon_redemptions (
-          student_id,
-          coupon_type,
-          meal_code,
-          add_ons,
-          token,
-          token_signature,
-          issued_at,
-          expires_at,
-          status
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'issued')
+        UPDATE coupon_redemptions
+        SET
+          meal_code = ?,
+          token = ?,
+          token_signature = ?,
+          claim_option = 'NOW',
+          activated_at = ?,
+          expires_at = ?,
+          status = 'issued'
+        WHERE id = ?
       `,
       [
-        studentId,
-        normalizedCouponType,
-        activeMeal.mealCode,
-        normalizedCouponType === 'Economy' ? JSON.stringify(normalizedAddOns) : null,
+        reservationMeal.mealCode,
         token,
         tokenSignature,
         issuedAtParts.dateTime,
         expiresAtParts.dateTime,
+        reservation.id,
       ],
     );
 
     res.json({
       status: 'success',
       data: {
+        couponId: reservation.id,
         token,
-        couponType: normalizedCouponType,
-        addOns: normalizedCouponType === 'Economy' ? normalizedAddOns : [],
-        add_ons: normalizedCouponType === 'Economy' ? normalizedAddOns : [],
-        meal: activeMeal,
-        issuedAt: issuedAtParts.dateTime,
+        couponType: 'Coupon',
+        meal: reservationMeal,
+        mealCode: reservationMeal.mealCode,
+        mealDate: reservation.mealDate,
+        claimOption: 'NOW',
+        claimedAt: reservation.claimedAt,
+        activatedAt: issuedAtParts.dateTime,
+        issuedAt: reservation.claimedAt || issuedAtParts.dateTime,
         expiresAt: expiresAtParts.dateTime,
+        deadlineAt: reservation.deadlineAt,
         ttlMinutes: COUPON_TOKEN_TTL_MINUTES,
+        status: 'ACTIVE',
       },
     });
   } catch (error) {
-    console.error('Coupon issue error:', error);
-    res.status(500).json({ status: 'error', message: `Unable to issue coupon: ${error.message}` });
+    console.error('Coupon activation error:', error);
+    res.status(500).json({ status: 'error', message: `Unable to activate coupon: ${error.message}` });
   }
 });
 
@@ -986,14 +1646,63 @@ app.put('/admin/meal-windows', authenticateAdmin, async (req, res) => {
   }
 
   try {
-    for (const mealWindow of mealWindows) {
+    const normalizedMealWindows = mealWindows.map((mealWindow) => ({
+      ...mealWindow,
+      mealCode: String(mealWindow.mealCode || '').trim().toLowerCase(),
+      mealName: String(mealWindow.mealName || '').trim(),
+      startTime: String(mealWindow.startTime || '').trim(),
+      endTime: String(mealWindow.endTime || '').trim(),
+    }));
+
+    for (const mealWindow of normalizedMealWindows) {
       const { mealCode, mealName, startTime, endTime, sortOrder } = mealWindow;
 
       if (!mealCode || !mealName || !startTime || !endTime) {
         res.status(400).json({ status: 'error', message: 'Each meal window needs mealCode, mealName, startTime, and endTime' });
         return;
       }
+      if (!isValidMealTime(startTime) || !isValidMealTime(endTime)) {
+        res.status(400).json({
+          status: 'error',
+          message: `${mealName} must use a valid 24-hour start and end time.`,
+        });
+        return;
+      }
+      if (parseTimeToMinutes(endTime) <= parseTimeToMinutes(startTime)) {
+        res.status(400).json({
+          status: 'error',
+          message: `${mealName} end time must be later than its start time.`,
+        });
+        return;
+      }
+    }
 
+    const lunchWindow = normalizedMealWindows.find(
+      (window) => window.mealCode === 'lunch',
+    );
+    const dinnerWindow = normalizedMealWindows.find(
+      (window) => window.mealCode === 'dinner',
+    );
+    if (!lunchWindow || !dinnerWindow) {
+      res.status(400).json({
+        status: 'error',
+        message: 'Lunch and Dinner windows are required for Meal Coupon timing.',
+      });
+      return;
+    }
+    if (
+      parseTimeToMinutes(dinnerWindow.endTime) <=
+      parseTimeToMinutes(lunchWindow.endTime)
+    ) {
+      res.status(400).json({
+        status: 'error',
+        message: 'Dinner closing time must be later than Lunch closing time for Claim Later activation.',
+      });
+      return;
+    }
+
+    for (const mealWindow of normalizedMealWindows) {
+      const { mealCode, mealName, startTime, endTime, sortOrder } = mealWindow;
       await dbQuery(
         `
           INSERT INTO meal_windows (meal_code, meal_name, start_time, end_time, sort_order)
@@ -1007,6 +1716,22 @@ app.put('/admin/meal-windows', authenticateAdmin, async (req, res) => {
         [mealCode, mealName, startTime, endTime, Number(sortOrder || 0)],
       );
     }
+
+    const now = getZonedNowParts();
+    const updatedActivationDeadline = `${now.date} ${dinnerWindow.endTime}`;
+    await dbQuery(
+      `
+        UPDATE coupon_redemptions
+        SET
+          deadline_at = ?,
+          expires_at = ?
+        WHERE coupon_type = 'Coupon'
+          AND COALESCE(meal_date, DATE(issued_at)) = ?
+          AND status = 'claimed'
+      `,
+      [updatedActivationDeadline, updatedActivationDeadline, now.date],
+    );
+    await expireStaleCouponRows(now);
 
     res.json({ status: 'success', message: 'Meal windows updated successfully' });
   } catch (error) {
@@ -1227,7 +1952,10 @@ app.post('/admin/qr/validate', authenticateAdmin, async (req, res) => {
       return;
     }
 
-    if (!activeMeal.isActive || activeMeal.mealCode !== record.mealCode) {
+    if (
+      record.couponType !== 'Coupon' &&
+      (!activeMeal.isActive || activeMeal.mealCode !== record.mealCode)
+    ) {
       res.status(400).json({ status: 'error', message: 'This QR can only be scanned during the matching cafeteria meal window' });
       return;
     }
