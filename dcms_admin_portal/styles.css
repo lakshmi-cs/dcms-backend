@@ -2148,6 +2148,76 @@ th {
   background: rgba(255, 125, 125, 0.1);
 }
 
+.table-pill.pending {
+  color: var(--warning);
+  background: rgba(249, 217, 118, 0.1);
+}
+
+.table-pill.approved {
+  color: var(--accent);
+  background: rgba(125, 211, 252, 0.1);
+}
+
+.table-pill.used {
+  color: var(--success);
+  background: rgba(134, 239, 172, 0.1);
+}
+
+.table-pill.cancelled {
+  color: var(--muted);
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.table-secondary {
+  display: block;
+  margin-top: 4px;
+  color: var(--muted);
+}
+
+.table-actions,
+.reset-code-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.compact-button {
+  padding: 9px 13px;
+  font-size: 0.82rem;
+}
+
+.reset-code-callout {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 22px;
+  margin: 18px 0 22px;
+  padding: 22px;
+  border: 1px solid rgba(126, 234, 213, 0.38);
+  border-radius: 20px;
+  background: linear-gradient(135deg, rgba(125, 211, 252, 0.12), rgba(126, 234, 213, 0.08));
+}
+
+.reset-code-callout strong {
+  display: block;
+  margin: 7px 0;
+  color: var(--accent);
+  font-size: clamp(1.8rem, 4vw, 2.8rem);
+  letter-spacing: 0.18em;
+}
+
+.reset-code-callout p {
+  margin: 0;
+  color: var(--muted);
+}
+
+@media (max-width: 720px) {
+  .reset-code-callout {
+    align-items: stretch;
+    flex-direction: column;
+  }
+}
+
 .loading-shell {
   min-height: 420px;
   display: grid;

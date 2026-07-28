@@ -13,6 +13,8 @@ const ADMIN_USERNAME = process.env.ADMIN_USERNAME || 'admin';
 const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || 'admin123';
 const ADMIN_TOKEN_SECRET = process.env.ADMIN_TOKEN_SECRET || 'replace-this-admin-secret';
 const COUPON_TOKEN_SECRET = process.env.COUPON_TOKEN_SECRET || 'replace-this-coupon-secret';
+const PASSWORD_RESET_SECRET = process.env.PASSWORD_RESET_SECRET || ADMIN_TOKEN_SECRET;
+const PASSWORD_RESET_CODE_TTL_MINUTES = 15;
 const COUPON_TOKEN_TTL_MINUTES = Number(process.env.COUPON_TOKEN_TTL_MINUTES || 10);
 const ECONOMY_COUPON_ADD_ON_OPTIONS = [
   'Extra vege',
@@ -50,6 +52,51 @@ function dbQuery(query, params = []) {
       resolve(results);
     });
   });
+}
+
+function hashPassword(password) {
+  const salt = crypto.randomBytes(16);
+  const derivedKey = crypto.scryptSync(String(password), salt, 64);
+  return `scrypt$${salt.toString('hex')}$${derivedKey.toString('hex')}`;
+}
+
+function verifyPassword(password, storedPassword) {
+  const stored = String(storedPassword || '');
+  const [scheme, saltHex, hashHex] = stored.split('$');
+
+  if (scheme !== 'scrypt' || !saltHex || !hashHex) {
+    return {
+      matches: stored === String(password),
+      needsUpgrade: stored === String(password),
+    };
+  }
+
+  try {
+    const expected = Buffer.from(hashHex, 'hex');
+    const actual = crypto.scryptSync(String(password), Buffer.from(saltHex, 'hex'), expected.length);
+    return {
+      matches: expected.length === actual.length && crypto.timingSafeEqual(expected, actual),
+      needsUpgrade: false,
+    };
+  } catch (error) {
+    return { matches: false, needsUpgrade: false };
+  }
+}
+
+function hashPasswordResetCode(requestId, studentId, code) {
+  return crypto
+    .createHmac('sha256', PASSWORD_RESET_SECRET)
+    .update(`${requestId}:${studentId}:${code}`)
+    .digest('hex');
+}
+
+function sanitizeUser(user) {
+  return {
+    student_id: user.student_id,
+    student_name: user.student_name,
+    credit_balance: user.credit_balance,
+    created_at: user.created_at,
+  };
 }
 
 function verifyDatabaseConnection() {
@@ -366,6 +413,22 @@ async function initialiseDatabase() {
       student_name VARCHAR(120) DEFAULT 'New Student',
       credit_balance DECIMAL(10,2) DEFAULT 0.00,
       created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    )
+  `);
+
+  await dbQuery(`
+    CREATE TABLE IF NOT EXISTS password_reset_requests (
+      id BIGINT AUTO_INCREMENT PRIMARY KEY,
+      student_id VARCHAR(50) NOT NULL,
+      status VARCHAR(20) NOT NULL DEFAULT 'pending',
+      code_hash CHAR(64) NULL,
+      requested_at DATETIME NOT NULL,
+      approved_at DATETIME NULL,
+      expires_at DATETIME NULL,
+      used_at DATETIME NULL,
+      cancelled_at DATETIME NULL,
+      INDEX idx_password_reset_student (student_id, requested_at),
+      INDEX idx_password_reset_status (status, requested_at)
     )
   `);
 
@@ -931,18 +994,35 @@ app.get('/health', async (req, res) => {
 app.post('/login', async (req, res) => {
   const { studentId, password } = req.body;
 
+  if (!studentId || !password) {
+    res.status(400).json({ status: 'error', message: 'Student ID and password are required' });
+    return;
+  }
+
   try {
     const results = await dbQuery(
-      'SELECT * FROM users WHERE student_id = ? AND password = ? LIMIT 1',
-      [studentId, password],
+      'SELECT * FROM users WHERE student_id = ? LIMIT 1',
+      [String(studentId).trim()],
     );
 
-    if (results.length === 0) {
+    const user = results[0];
+    const passwordResult = user
+      ? verifyPassword(password, user.password)
+      : { matches: false, needsUpgrade: false };
+
+    if (!user || !passwordResult.matches) {
       res.status(401).json({ status: 'error', message: 'Invalid credentials' });
       return;
     }
 
-    res.json({ status: 'success', data: results[0] });
+    if (passwordResult.needsUpgrade) {
+      await dbQuery(
+        'UPDATE users SET password = ? WHERE student_id = ?',
+        [hashPassword(password), user.student_id],
+      );
+    }
+
+    res.json({ status: 'success', data: sanitizeUser(user) });
   } catch (error) {
     console.error('Login error:', error);
     res.status(500).json({ status: 'error', message: `Database error: ${error.message}` });
@@ -950,15 +1030,23 @@ app.post('/login', async (req, res) => {
 });
 
 app.post('/register', async (req, res) => {
-  const { studentId, password } = req.body;
+  const { studentId, password, studentName } = req.body;
 
   if (!studentId || !password) {
     res.status(400).json({ status: 'error', message: 'Student ID and password are required' });
     return;
   }
+  if (String(password).length < 6 || String(password).length > 128) {
+    res.status(400).json({
+      status: 'error',
+      message: 'Password must be between 6 and 128 characters',
+    });
+    return;
+  }
 
   try {
-    const existingUsers = await dbQuery('SELECT student_id FROM users WHERE student_id = ? LIMIT 1', [studentId]);
+    const normalizedStudentId = String(studentId).trim();
+    const existingUsers = await dbQuery('SELECT student_id FROM users WHERE student_id = ? LIMIT 1', [normalizedStudentId]);
 
     if (existingUsers.length > 0) {
       res.status(400).json({ status: 'error', message: 'Student ID already registered' });
@@ -967,13 +1055,145 @@ app.post('/register', async (req, res) => {
 
     await dbQuery(
       'INSERT INTO users (student_id, password, student_name, credit_balance) VALUES (?, ?, ?, ?)',
-      [studentId, password, 'New Student', 0.0],
+      [
+        normalizedStudentId,
+        hashPassword(password),
+        String(studentName || 'New Student').trim() || 'New Student',
+        0.0,
+      ],
     );
 
     res.json({ status: 'success', message: 'User registered successfully' });
   } catch (error) {
     console.error('Register error:', error);
     res.status(500).json({ status: 'error', message: `Database error: ${error.message}` });
+  }
+});
+
+app.post('/password-reset/request', async (req, res) => {
+  const studentId = String(req.body?.studentId || '').trim();
+
+  if (!studentId || studentId.length > 50) {
+    res.status(400).json({ status: 'error', message: 'Enter a valid Student ID' });
+    return;
+  }
+
+  try {
+    const users = await dbQuery(
+      'SELECT student_id FROM users WHERE student_id = ? LIMIT 1',
+      [studentId],
+    );
+
+    if (users.length) {
+      const now = getZonedNowParts();
+      await dbQuery(
+        `
+          UPDATE password_reset_requests
+          SET status = 'cancelled', cancelled_at = ?
+          WHERE student_id = ? AND status IN ('pending', 'approved')
+        `,
+        [now.dateTime, studentId],
+      );
+      await dbQuery(
+        `
+          INSERT INTO password_reset_requests (student_id, status, requested_at)
+          VALUES (?, 'pending', ?)
+        `,
+        [studentId, now.dateTime],
+      );
+    }
+
+    res.json({
+      status: 'success',
+      message: 'If the Student ID exists, the reset request has been sent to the administrator.',
+    });
+  } catch (error) {
+    console.error('Password reset request error:', error);
+    res.status(500).json({ status: 'error', message: 'Unable to submit the reset request' });
+  }
+});
+
+app.post('/password-reset/confirm', async (req, res) => {
+  const studentId = String(req.body?.studentId || '').trim();
+  const code = String(req.body?.code || '').trim();
+  const newPassword = String(req.body?.newPassword || '');
+
+  if (!studentId || !/^\d{6}$/.test(code)) {
+    res.status(400).json({ status: 'error', message: 'Enter your Student ID and the 6-digit reset code' });
+    return;
+  }
+  if (newPassword.length < 6 || newPassword.length > 128) {
+    res.status(400).json({
+      status: 'error',
+      message: 'New password must be between 6 and 128 characters',
+    });
+    return;
+  }
+
+  try {
+    const now = getZonedNowParts();
+    const requests = await dbQuery(
+      `
+        SELECT id, student_id AS studentId, code_hash AS codeHash, expires_at AS expiresAt
+        FROM password_reset_requests
+        WHERE student_id = ? AND status = 'approved' AND expires_at >= ?
+        ORDER BY approved_at DESC, id DESC
+        LIMIT 1
+      `,
+      [studentId, now.dateTime],
+    );
+    const resetRequest = requests[0];
+
+    if (!resetRequest) {
+      res.status(400).json({
+        status: 'error',
+        message: 'The reset code is invalid or expired. Ask the administrator for a new code.',
+      });
+      return;
+    }
+
+    const suppliedHash = hashPasswordResetCode(resetRequest.id, studentId, code);
+    const expectedHash = Buffer.from(String(resetRequest.codeHash || ''), 'hex');
+    const actualHash = Buffer.from(suppliedHash, 'hex');
+    const codeMatches = expectedHash.length === actualHash.length &&
+      crypto.timingSafeEqual(expectedHash, actualHash);
+
+    if (!codeMatches) {
+      res.status(400).json({ status: 'error', message: 'The reset code is invalid or expired.' });
+      return;
+    }
+
+    const updatedRequest = await dbQuery(
+      `
+        UPDATE password_reset_requests
+        SET status = 'used', used_at = ?
+        WHERE id = ? AND status = 'approved' AND expires_at >= ?
+      `,
+      [now.dateTime, resetRequest.id, now.dateTime],
+    );
+
+    if (updatedRequest.affectedRows !== 1) {
+      res.status(400).json({ status: 'error', message: 'This reset code has already been used or expired.' });
+      return;
+    }
+
+    const updatedUser = await dbQuery(
+      'UPDATE users SET password = ? WHERE student_id = ?',
+      [hashPassword(newPassword), studentId],
+    );
+
+    if (updatedUser.affectedRows !== 1) {
+      res.status(404).json({ status: 'error', message: 'Student account not found' });
+      return;
+    }
+
+    res.json({
+      status: 'success',
+      message: 'Password updated successfully. You can now sign in.',
+    });
+  } catch (error) {
+    console.error('Password reset confirmation error:', error);
+    res.status(500).json({ status: 'error', message: 'Unable to update the password' });
   }
 });
 
@@ -2124,6 +2344,115 @@ app.get('/admin/redemptions', authenticateAdmin, async (req, res) => {
       limit: startDate && endDate ? null : requestedLimit,
     });
     res.json({ status: 'success', data: redemptions });
+  } catch (error) {
+    res.status(500).json({ status: 'error', message: error.message });
+  }
+});
+
+app.get('/admin/password-resets', authenticateAdmin, async (req, res) => {
+  try {
+    const resetRequests = await dbQuery(`
+      SELECT
+        request.id,
+        request.student_id AS studentId,
+        user.student_name AS studentName,
+        request.status,
+        request.requested_at AS requestedAt,
+        request.approved_at AS approvedAt,
+        request.expires_at AS expiresAt,
+        request.used_at AS usedAt,
+        request.cancelled_at AS cancelledAt
+      FROM password_reset_requests request
+      LEFT JOIN users user ON user.student_id = request.student_id
+      ORDER BY request.requested_at DESC, request.id DESC
+      LIMIT 200
+    `);
+
+    res.json({ status: 'success', data: resetRequests });
+  } catch (error) {
+    res.status(500).json({ status: 'error', message: error.message });
+  }
+});
+
+app.post('/admin/password-resets/:id/approve', authenticateAdmin, async (req, res) => {
+  try {
+    const requestId = Number(req.params.id);
+    if (!Number.isInteger(requestId) || requestId <= 0) {
+      res.status(400).json({ status: 'error', message: 'Invalid reset request' });
+      return;
+    }
+
+    const requests = await dbQuery(
+      `
+        SELECT id, student_id AS studentId, status
+        FROM password_reset_requests
+        WHERE id = ?
+        LIMIT 1
+      `,
+      [requestId],
+    );
+    const resetRequest = requests[0];
+    if (!resetRequest || !['pending', 'approved'].includes(resetRequest.status)) {
+      res.status(404).json({ status: 'error', message: 'Pending reset request not found' });
+      return;
+    }
+
+    const code = String(crypto.randomInt(100000, 1000000));
+    const approvedAt = getZonedNowParts();
+    const expiresAt = getZonedNowParts(
+      new Date(Date.now() + PASSWORD_RESET_CODE_TTL_MINUTES * 60 * 1000),
+    );
+    const codeHash = hashPasswordResetCode(requestId, resetRequest.studentId, code);
+
+    await dbQuery(
+      `
+        UPDATE password_reset_requests
+        SET status = 'approved', code_hash = ?, approved_at = ?, expires_at = ?,
+            used_at = NULL, cancelled_at = NULL
+        WHERE id = ?
+      `,
+      [codeHash, approvedAt.dateTime, expiresAt.dateTime, requestId],
+    );
+
+    res.json({
+      status: 'success',
+      data: {
+        id: requestId,
+        studentId: resetRequest.studentId,
+        code,
+        expiresAt: expiresAt.dateTime,
+      },
+      message: 'One-time reset code generated',
+    });
+  } catch (error) {
+    res.status(500).json({ status: 'error', message: error.message });
+  }
+});
+
+app.post('/admin/password-resets/:id/cancel', authenticateAdmin, async (req, res) => {
+  try {
+    const requestId = Number(req.params.id);
+    if (!Number.isInteger(requestId) || requestId <= 0) {
+      res.status(400).json({ status: 'error', message: 'Invalid reset request' });
+      return;
+    }
+
+    const now = getZonedNowParts();
+    const result = await dbQuery(
+      `
+        UPDATE password_reset_requests
+        SET status = 'cancelled', cancelled_at = ?, code_hash = NULL, expires_at = NULL
+        WHERE id = ? AND status IN ('pending', 'approved')
+      `,
+      [now.dateTime, requestId],
+    );
+
+    if (result.affectedRows !== 1) {
+      res.status(404).json({ status: 'error', message: 'Active reset request not found' });
+      return;
+    }
+
+    res.json({ status: 'success', message: 'Password reset request cancelled' });
   } catch (error) {
     res.status(500).json({ status: 'error', message: error.message });
   }

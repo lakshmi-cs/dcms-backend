@@ -74,6 +74,8 @@ const state = {
   content: null,
   activityRedemptions: [],
   mealFeedback: [],
+  passwordResetRequests: [],
+  passwordResetCodeNotice: null,
   scheduleDrafts: {},
   sessionQr: null,
   validationResult: null,
@@ -417,7 +419,7 @@ async function checkHealth() {
     const data = await api("/health", { auth: false });
     const label = data.activeMeal?.isActive
       ? `${data.activeMeal.mealName} is live`
-      : `Connected Â· ${data.timeZone}`;
+      : `Connected · ${data.timeZone}`;
     setServerStatus(label, "success");
   } catch (error) {
     setServerStatus("Backend unavailable", "danger");
@@ -444,7 +446,7 @@ async function login(username, password) {
 
     state.token = token;
     safeStorageSet(AUTH_STORAGE_KEY, state.token);
-    setServerStatus("Connected Â· Signing in", "success");
+    setServerStatus("Connected · Signing in", "success");
     showFlash("Admin session started", "success");
     await loadDashboard();
   } catch (error) {
@@ -460,6 +462,8 @@ function logout() {
   state.dashboard = null;
   state.content = null;
   state.mealFeedback = [];
+  state.passwordResetRequests = [];
+  state.passwordResetCodeNotice = null;
   state.sessionQr = null;
   state.validationResult = null;
   state.sidebarOpen = false;
@@ -513,14 +517,18 @@ async function loadDashboard(options = {}) {
       api("/admin/dashboard"),
       api("/admin/content"),
       api("/admin/redemptions?limit=5000"),
+      api("/admin/password-resets"),
     ];
 
-    const [dashboard, content, activityRedemptions] = await Promise.all(requests);
+    const [dashboard, content, activityRedemptions, passwordResetRequests] = await Promise.all(requests);
 
     state.dashboard = dashboard;
     state.content = content;
     state.activityRedemptions = Array.isArray(activityRedemptions)
       ? activityRedemptions
+      : [];
+    state.passwordResetRequests = Array.isArray(passwordResetRequests)
+      ? passwordResetRequests
       : [];
     state.mealFeedback = Array.isArray(content?.mealFeedback)
       ? content.mealFeedback
@@ -528,7 +536,7 @@ async function loadDashboard(options = {}) {
     setServerStatus(
       dashboard?.activeMeal?.isActive
         ? `${dashboard.activeMeal.mealName} is live`
-        : `Connected Â· ${content?.timeZone || dashboard?.timeZone || "Backend ready"}`,
+        : `Connected · ${content?.timeZone || dashboard?.timeZone || "Backend ready"}`,
       "success",
     );
     if (!isBackgroundRefresh) {
@@ -1006,6 +1014,77 @@ function redemptionsMarkup(redemptions) {
   `;
 }
 
+function passwordResetRequestsMarkup(requests) {
+  const codeNotice = state.passwordResetCodeNotice
+    ? `
+      <div class="reset-code-callout">
+        <div>
+          <span class="eyebrow">One-time reset code</span>
+          <strong>${escapeHtml(state.passwordResetCodeNotice.code)}</strong>
+          <p>
+            Give this code only to student
+            <b>${escapeHtml(state.passwordResetCodeNotice.studentId)}</b>.
+            It expires ${escapeHtml(formatDateTime(state.passwordResetCodeNotice.expiresAt))}.
+          </p>
+        </div>
+        <div class="reset-code-actions">
+          <button type="button" class="primary-button" id="copyPasswordResetCodeButton">Copy code</button>
+          <button type="button" class="ghost-button" id="closePasswordResetCodeButton">Close</button>
+        </div>
+      </div>
+    `
+    : "";
+
+  if (!requests.length) {
+    return `
+      ${codeNotice}
+      <div class="empty-card">No students have requested a password reset.</div>
+    `;
+  }
+
+  return `
+    ${codeNotice}
+    <div class="table-shell">
+      <table>
+        <thead>
+          <tr>
+            <th>Student</th>
+            <th>Requested</th>
+            <th>Status</th>
+            <th>Code expiry</th>
+            <th>Action</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${requests
+            .map((item) => {
+              const canManage = item.status === "pending" || item.status === "approved";
+              const approveLabel = item.status === "approved" ? "Generate new code" : "Approve & generate code";
+              return `
+                <tr>
+                  <td>
+                    <strong>${escapeHtml(item.studentId)}</strong>
+                    <small class="table-secondary">${escapeHtml(item.studentName || "Student")}</small>
+                  </td>
+                  <td>${escapeHtml(formatDateTime(item.requestedAt))}</td>
+                  <td><span class="table-pill ${escapeHtml(item.status)}">${escapeHtml(item.status)}</span></td>
+                  <td>${escapeHtml(item.expiresAt ? formatDateTime(item.expiresAt) : "—")}</td>
+                  <td>
+                    <div class="table-actions">
+                      ${canManage ? `<button type="button" class="secondary-button compact-button" data-approve-password-reset="${item.id}">${approveLabel}</button>` : ""}
+                      ${canManage ? `<button type="button" class="danger-button compact-button" data-cancel-password-reset="${item.id}">Cancel</button>` : ""}
+                    </div>
+                  </td>
+                </tr>
+              `;
+            })
+            .join("")}
+        </tbody>
+      </table>
+    </div>
+  `;
+}
+
 function mealFeedbackMarkup(feedbackEntries) {
   if (!feedbackEntries.length) {
     return `<div class="empty-card">No food feedback has been submitted yet.</div>`;
@@ -1209,7 +1288,7 @@ function redemptionMiniListMarkup(redemptions) {
             <div class="activity-mini-item">
               <div>
                 <strong>${escapeHtml(item.studentId)}</strong>
-                <span>${escapeHtml(`${item.couponType} Â· ${item.mealCode}`)}</span>
+                <span>${escapeHtml(`${item.couponType} · ${item.mealCode}`)}</span>
               </div>
               <small>${escapeHtml(formatRelativeTime(item.issuedAt))}</small>
             </div>
@@ -1612,6 +1691,7 @@ function dashboardMarkup() {
     </section>
   `;
   const mealFeedback = state.mealFeedback || [];
+  const passwordResetRequests = state.passwordResetRequests || [];
   const activityPage = `
     ${pageHeaderMarkup(
       "Audit trail",
@@ -1626,6 +1706,16 @@ function dashboardMarkup() {
       `,
       `Stored records stay available for review and CSV export.`,
     )}
+    <section class="module-section">
+      <article class="glass-card panel-card">
+        <div class="section-intro">
+          <p class="eyebrow">Account access</p>
+          <h2>Password Reset Requests</h2>
+          <p class="panel-copy">Approve a student request to generate a one-time 6-digit code. The code is shown once and expires after 15 minutes.</p>
+        </div>
+        ${passwordResetRequestsMarkup(passwordResetRequests)}
+      </article>
+    </section>
     <section class="module-section">
       <div class="content-grid content-grid--sidebar">
         <article class="glass-card panel-card">
@@ -1899,6 +1989,67 @@ function bindEvents() {
   const exportStudentRecordsMonthlyButton = document.getElementById("exportStudentRecordsMonthlyButton");
   if (exportStudentRecordsMonthlyButton) {
     exportStudentRecordsMonthlyButton.addEventListener("click", () => exportStudentRecordsCsv("monthly"));
+  }
+
+  document.querySelectorAll("[data-approve-password-reset]").forEach((button) => {
+    button.addEventListener("click", () => approvePasswordReset(button.dataset.approvePasswordReset));
+  });
+
+  document.querySelectorAll("[data-cancel-password-reset]").forEach((button) => {
+    button.addEventListener("click", () => cancelPasswordReset(button.dataset.cancelPasswordReset));
+  });
+
+  const copyPasswordResetCodeButton = document.getElementById("copyPasswordResetCodeButton");
+  if (copyPasswordResetCodeButton) {
+    copyPasswordResetCodeButton.addEventListener("click", copyPasswordResetCode);
+  }
+
+  const closePasswordResetCodeButton = document.getElementById("closePasswordResetCodeButton");
+  if (closePasswordResetCodeButton) {
+    closePasswordResetCodeButton.addEventListener("click", () => {
+      state.passwordResetCodeNotice = null;
+      render();
+    });
+  }
+}
+
+async function approvePasswordReset(requestId) {
+  try {
+    const data = await api(`/admin/password-resets/${encodeURIComponent(requestId)}/approve`, {
+      method: "POST",
+    });
+    state.passwordResetCodeNotice = data;
+    showFlash(`Reset code generated for ${data.studentId}.`, "success");
+    await loadDashboard({ isBackgroundRefresh: true });
+  } catch (error) {
+    showFlash(error.message || "Unable to approve the password reset.", "danger");
+  }
+}
+
+async function cancelPasswordReset(requestId) {
+  try {
+    await api(`/admin/password-resets/${encodeURIComponent(requestId)}/cancel`, {
+      method: "POST",
+    });
+    if (state.passwordResetCodeNotice?.id === Number(requestId)) {
+      state.passwordResetCodeNotice = null;
+    }
+    showFlash("Password reset request cancelled.", "success");
+    await loadDashboard({ isBackgroundRefresh: true });
+  } catch (error) {
+    showFlash(error.message || "Unable to cancel the password reset.", "danger");
+  }
+}
+
+async function copyPasswordResetCode() {
+  const code = state.passwordResetCodeNotice?.code;
+  if (!code) return;
+
+  try {
+    await navigator.clipboard.writeText(code);
+    showFlash("Reset code copied.", "success");
+  } catch (error) {
+    showFlash(`Reset code: ${code}`, "info");
   }
 }
 
