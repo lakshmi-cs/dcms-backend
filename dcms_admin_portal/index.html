@@ -7,27 +7,34 @@
     <link rel="preconnect" href="https://cdn.jsdelivr.net" />
     <link rel="stylesheet" href="./styles.css" />
   </head>
-  <body>
+  <body data-page="overview">
+    <a class="skip-link" href="#appRoot">Skip to main content</a>
     <div class="background-orb orb-one"></div>
     <div class="background-orb orb-two"></div>
     <div class="background-grid"></div>
 
     <div class="page-shell">
       <header class="topbar">
-        <div>
-          <p class="eyebrow">AIMST University</p>
-          <h1>Digital Cafeteria Admin Portal</h1>
+        <div class="topbar-branding">
+          <div class="topbar-brand-mark">DC</div>
+          <div class="topbar-brand-copy">
+            <p class="eyebrow">AIMST University</p>
+            <h1>Digital Cafeteria Admin Portal</h1>
+            <span>Hostel cafeteria management and student meal operations</span>
+          </div>
         </div>
         <div class="topbar-actions">
           <span class="status-pill" id="serverStatus">Backend connection pending</span>
+          <a class="ghost-button" href="./coupons.html">Coupons</a>
           <button class="ghost-button hidden" id="logoutButton" type="button">Log Out</button>
         </div>
       </header>
 
-      <main id="appRoot"></main>
+      <main id="appRoot" tabindex="-1"></main>
     </div>
 
     <script src="./config.js"></script>
+    <script src="./time.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.4/build/qrcode.min.js"></script>
     <script src="./app.js"></script>
   </body>

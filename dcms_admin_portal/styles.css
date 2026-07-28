@@ -2511,6 +2511,204 @@ code {
   }
 }
 
+/* Final accessibility and contrast pass */
+:root {
+  --border: rgba(174, 190, 235, 0.28);
+  --muted: #c1cae5;
+  --accent: #a8bcff;
+  --accent-strong: #72efd8;
+  --danger: #ff91a0;
+  --success: #7df0bd;
+  --warning: #ffdc87;
+}
+
+.skip-link {
+  position: fixed;
+  z-index: 1000;
+  top: 10px;
+  left: 10px;
+  padding: 11px 16px;
+  border: 2px solid var(--accent-strong);
+  border-radius: 12px;
+  color: #07152a;
+  background: var(--accent-strong);
+  font-weight: 800;
+  text-decoration: none;
+  transform: translateY(-160%);
+  transition: transform 140ms ease;
+}
+
+.skip-link:focus {
+  transform: translateY(0);
+}
+
+button:focus-visible,
+a:focus-visible,
+input:focus-visible,
+textarea:focus-visible,
+select:focus-visible {
+  outline: 3px solid #8ff5e2;
+  outline-offset: 3px;
+  box-shadow: 0 0 0 6px rgba(9, 13, 36, 0.86);
+}
+
+input,
+textarea,
+select {
+  border-color: rgba(190, 204, 244, 0.34);
+  background: rgba(4, 8, 27, 0.56);
+}
+
+input:hover,
+textarea:hover,
+select:hover {
+  border-color: rgba(190, 204, 244, 0.52);
+}
+
+input:focus,
+textarea:focus,
+select:focus {
+  border-color: var(--accent-strong);
+  background: rgba(4, 8, 27, 0.74);
+}
+
+input::placeholder,
+textarea::placeholder {
+  color: #aab5d4;
+  opacity: 1;
+}
+
+label span,
+.helper-copy,
+.panel-copy,
+.search-hint,
+.table-secondary,
+.record-results-summary,
+.record-pagination {
+  color: var(--muted);
+}
+
+.glass-card,
+.table-shell,
+.empty-card {
+  border-color: var(--border);
+}
+
+.dashboard-nav-label,
+th {
+  color: #c3cce7;
+}
+
+.dashboard-nav-link {
+  color: #e9edff;
+}
+
+.dashboard-nav-link small {
+  color: #bac4e1;
+}
+
+.dashboard-nav-link:hover {
+  border-color: rgba(168, 188, 255, 0.45);
+  background: rgba(168, 188, 255, 0.12);
+}
+
+.dashboard-nav-link.is-active {
+  border-color: rgba(114, 239, 216, 0.72);
+  background:
+    linear-gradient(90deg, rgba(114, 239, 216, 0.2), rgba(168, 188, 255, 0.14));
+  box-shadow:
+    inset 4px 0 0 var(--accent-strong),
+    0 0 0 1px rgba(114, 239, 216, 0.12);
+}
+
+th,
+td {
+  border-bottom-color: rgba(190, 204, 244, 0.18);
+}
+
+tbody tr:nth-child(even) {
+  background: rgba(168, 188, 255, 0.035);
+}
+
+tbody tr:hover {
+  background: rgba(114, 239, 216, 0.09);
+}
+
+.table-pill {
+  border: 1px solid currentColor;
+  text-transform: capitalize;
+}
+
+.table-pill.issued,
+.table-pill.pending {
+  color: var(--warning);
+  background: rgba(255, 220, 135, 0.14);
+}
+
+.table-pill.available,
+.table-pill.redeemed,
+.table-pill.used {
+  color: var(--success);
+  background: rgba(125, 240, 189, 0.14);
+}
+
+.table-pill.expired {
+  color: var(--danger);
+  background: rgba(255, 145, 160, 0.15);
+}
+
+.table-pill.approved {
+  color: #a9ddff;
+  background: rgba(169, 221, 255, 0.14);
+}
+
+.table-pill.cancelled {
+  color: #d0d7eb;
+  background: rgba(208, 215, 235, 0.1);
+}
+
+.status-pill[data-tone="success"] {
+  color: var(--success);
+  border-color: rgba(125, 240, 189, 0.5);
+  background: rgba(125, 240, 189, 0.13);
+}
+
+.status-pill[data-tone="danger"] {
+  color: var(--danger);
+  border-color: rgba(255, 145, 160, 0.5);
+  background: rgba(255, 145, 160, 0.14);
+}
+
+.primary-button,
+.secondary-button,
+.ghost-button,
+.danger-button {
+  min-height: 44px;
+}
+
+.compact-button {
+  min-height: 40px;
+}
+
+@media (prefers-contrast: more) {
+  :root {
+    --border: rgba(219, 227, 255, 0.52);
+    --muted: #d9e0f4;
+  }
+
+  .glass-card,
+  input,
+  textarea,
+  select,
+  .table-shell {
+    border-width: 2px;
+  }
+
+  .dashboard-nav-link.is-active {
+    border-width: 2px;
+  }
+}
+
 /* Admin clarity refresh */
 :root {
   --bg: #090d24;
