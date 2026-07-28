@@ -1,6 +1,7 @@
 const config = window.DCMS_ADMIN_CONFIG || {};
 const AUTH_STORAGE_KEY = "dcms_admin_token";
 const API_BASE_STORAGE_KEY = "dcms_admin_api_base_url";
+const ADMIN_SESSION_TIMEOUT_MS = 30 * 60 * 1000;
 const timeUtils = window.DCMSTime || {};
 
 function safeStorageGet(key) {
@@ -87,6 +88,13 @@ const state = {
   loading: false,
   autoRefreshHandle: null,
   backgroundLoadInFlight: false,
+  unsavedChanges: false,
+  lastActivityAt: Date.now(),
+  sessionTimeoutHandle: null,
+  recordQuery: "",
+  recordStatus: "all",
+  recordPage: 1,
+  recordPageSize: 25,
 };
 
 const appRoot = document.getElementById("appRoot");
@@ -314,6 +322,8 @@ function showFlash(message, tone = "info") {
     flashStack = document.createElement("div");
     flashStack.id = "flashStack";
     flashStack.className = "flash-stack";
+    flashStack.setAttribute("role", "status");
+    flashStack.setAttribute("aria-live", "polite");
     document.body.appendChild(flashStack);
   }
 
@@ -326,6 +336,41 @@ function showFlash(message, tone = "info") {
     flash.classList.add("leaving");
     window.setTimeout(() => flash.remove(), 260);
   }, 3200);
+}
+
+function setUnsavedChanges(isDirty) {
+  state.unsavedChanges = Boolean(isDirty);
+  const indicator = document.getElementById("unsavedChangesIndicator");
+  if (indicator) {
+    indicator.classList.toggle("hidden", !state.unsavedChanges);
+  }
+}
+
+function confirmDiscardChanges() {
+  return !state.unsavedChanges ||
+    window.confirm("You have unsaved changes. Leave this page and discard them?");
+}
+
+function recordAdminActivity() {
+  state.lastActivityAt = Date.now();
+}
+
+function stopSessionTimeout() {
+  if (state.sessionTimeoutHandle) {
+    window.clearInterval(state.sessionTimeoutHandle);
+    state.sessionTimeoutHandle = null;
+  }
+}
+
+function startSessionTimeout() {
+  stopSessionTimeout();
+  if (!state.token) return;
+  recordAdminActivity();
+  state.sessionTimeoutHandle = window.setInterval(() => {
+    if (Date.now() - state.lastActivityAt < ADMIN_SESSION_TIMEOUT_MS) return;
+    logout({ silent: true, force: true });
+    showFlash("Your session ended after 30 minutes of inactivity. Please sign in again.", "info");
+  }, 30000);
 }
 
 function syncProfileMenu() {
@@ -416,10 +461,8 @@ async function api(path, options = {}) {
 
 async function checkHealth() {
   try {
-    const data = await api("/health", { auth: false });
-    const label = data.activeMeal?.isActive
-      ? `${data.activeMeal.mealName} is live`
-      : `Connected Â· ${data.timeZone}`;
+    await api("/health", { auth: false });
+    const label = "System online";
     setServerStatus(label, "success");
   } catch (error) {
     setServerStatus("Backend unavailable", "danger");
@@ -446,8 +489,9 @@ async function login(username, password) {
 
     state.token = token;
     safeStorageSet(AUTH_STORAGE_KEY, state.token);
-    setServerStatus("Connected Â· Signing in", "success");
+    setServerStatus("System online", "success");
     showFlash("Admin session started", "success");
+    startSessionTimeout();
     await loadDashboard();
   } catch (error) {
     state.loading = false;
@@ -456,8 +500,11 @@ async function login(username, password) {
   }
 }
 
-function logout() {
+function logout(options = {}) {
+  const { silent = false, force = false } = options;
+  if (!force && !confirmDiscardChanges()) return;
   stopDashboardAutoRefresh();
+  stopSessionTimeout();
   state.token = "";
   state.dashboard = null;
   state.content = null;
@@ -469,9 +516,12 @@ function logout() {
   state.sidebarOpen = false;
   state.profileMenuOpen = false;
   state.loading = false;
+  state.unsavedChanges = false;
   safeStorageRemove(AUTH_STORAGE_KEY);
   render();
-  showFlash("Logged out", "info");
+  if (!silent) {
+    showFlash("Logged out", "info");
+  }
 }
 
 function stopDashboardAutoRefresh() {
@@ -536,7 +586,7 @@ async function loadDashboard(options = {}) {
     setServerStatus(
       dashboard?.activeMeal?.isActive
         ? `${dashboard.activeMeal.mealName} is live`
-        : `Connected Â· ${content?.timeZone || dashboard?.timeZone || "Backend ready"}`,
+        : `Connected - ${content?.timeZone || dashboard?.timeZone || "Backend ready"}`,
       "success",
     );
     if (!isBackgroundRefresh) {
@@ -551,7 +601,7 @@ async function loadDashboard(options = {}) {
       state.loading = false;
     }
     if (error.status === 401) {
-      logout();
+      logout({ silent: true, force: true });
       if (!isBackgroundRefresh) {
         showFlash("Your admin session expired. Please log in again.", "danger");
       }
@@ -586,7 +636,7 @@ function loginMarkup() {
             </div>
           </div>
           <p class="eyebrow">Cafeteria management dashboard</p>
-          <h2>Run todayâ€™s cafeteria from one clear workspace.</h2>
+          <h2>Run today's cafeteria from one clear workspace.</h2>
           <p>
             Manage meal hours, publish student content, and review coupon activity with every update flowing directly into the student app.
           </p>
@@ -610,7 +660,10 @@ function loginMarkup() {
           </label>
           <label>
             <span>Password</span>
-            <input name="password" type="password" placeholder="Enter password" autocomplete="current-password" required />
+            <span class="password-input-shell">
+              <input id="adminPasswordInput" name="password" type="password" placeholder="Enter password" autocomplete="current-password" required />
+              <button class="password-toggle" id="togglePasswordButton" type="button" aria-label="Show password">Show</button>
+            </span>
           </label>
           <button type="submit" class="primary-button" ${state.loading ? "disabled" : ""}>
             ${state.loading ? "Signing in..." : "Open Admin Workspace"}
@@ -968,10 +1021,47 @@ function newsCards(news) {
 
 function redemptionsMarkup(redemptions) {
   if (!redemptions.length) {
-    return `<div class="empty-card">No coupon activity has been recorded today.</div>`;
+    return `<div class="empty-card">No coupon activity has been recorded yet.</div>`;
   }
 
+  const normalizedQuery = String(state.recordQuery || "").trim().toLowerCase();
+  const filteredRedemptions = redemptions.filter((item) => {
+    const displayStatus = normalizeStudentRecordStatus(item.status, item.expiresAt);
+    const matchesStatus = state.recordStatus === "all" || displayStatus === state.recordStatus;
+    const searchableText = [
+      item.studentId,
+      item.couponType,
+      item.mealCode,
+      getStudentRecordAddOnsLabel(item),
+      displayStatus,
+    ].join(" ").toLowerCase();
+    return matchesStatus && (!normalizedQuery || searchableText.includes(normalizedQuery));
+  });
+  const pageCount = Math.max(1, Math.ceil(filteredRedemptions.length / state.recordPageSize));
+  state.recordPage = Math.min(Math.max(1, state.recordPage), pageCount);
+  const pageStart = (state.recordPage - 1) * state.recordPageSize;
+  const visibleRedemptions = filteredRedemptions.slice(pageStart, pageStart + state.recordPageSize);
+
   return `
+    <form class="record-toolbar" id="recordFilterForm">
+      <label>
+        <span>Find a student or coupon</span>
+        <input name="recordQuery" type="search" placeholder="Student ID, meal, coupon or add-on" value="${escapeHtml(state.recordQuery)}" />
+      </label>
+      <label>
+        <span>Status</span>
+        <select name="recordStatus">
+          ${["all", "available", "redeemed", "expired"].map((status) =>
+            `<option value="${status}" ${state.recordStatus === status ? "selected" : ""}>${status === "all" ? "All statuses" : status[0].toUpperCase() + status.slice(1)}</option>`
+          ).join("")}
+        </select>
+      </label>
+      <button type="submit" class="secondary-button">Apply filters</button>
+    </form>
+    <div class="record-results-summary">
+      Showing ${visibleRedemptions.length ? pageStart + 1 : 0}-${Math.min(pageStart + visibleRedemptions.length, filteredRedemptions.length)}
+      of ${filteredRedemptions.length} matching records
+    </div>
     <div class="table-shell">
       <table>
         <thead>
@@ -985,7 +1075,7 @@ function redemptionsMarkup(redemptions) {
           </tr>
         </thead>
         <tbody>
-          ${redemptions
+          ${visibleRedemptions
             .map((item) => {
               const displayStatus = normalizeStudentRecordStatus(
                 item.status,
@@ -1003,10 +1093,17 @@ function redemptionsMarkup(redemptions) {
                 </tr>
               `;
             })
-            .join("")}
+            .join("") || `<tr><td colspan="6">No records match these filters.</td></tr>`}
         </tbody>
       </table>
     </div>
+    ${pageCount > 1 ? `
+      <div class="record-pagination" aria-label="Student records pages">
+        <button type="button" class="secondary-button compact-button" data-record-page="${state.recordPage - 1}" ${state.recordPage === 1 ? "disabled" : ""}>Previous</button>
+        <span>Page ${state.recordPage} of ${pageCount}</span>
+        <button type="button" class="secondary-button compact-button" data-record-page="${state.recordPage + 1}" ${state.recordPage === pageCount ? "disabled" : ""}>Next</button>
+      </div>
+    ` : ""}
   `;
 }
 
@@ -1064,7 +1161,7 @@ function passwordResetRequestsMarkup(requests) {
                   </td>
                   <td>${escapeHtml(formatDateTime(item.requestedAt))}</td>
                   <td><span class="table-pill ${escapeHtml(item.status)}">${escapeHtml(item.status)}</span></td>
-                  <td>${escapeHtml(item.expiresAt ? formatDateTime(item.expiresAt) : "â€”")}</td>
+                  <td>${escapeHtml(item.expiresAt ? formatDateTime(item.expiresAt) : "--")}</td>
                   <td>
                     <div class="table-actions">
                       ${canManage ? `<button type="button" class="secondary-button compact-button" data-approve-password-reset="${item.id}">${approveLabel}</button>` : ""}
@@ -1284,7 +1381,7 @@ function redemptionMiniListMarkup(redemptions) {
             <div class="activity-mini-item">
               <div>
                 <strong>${escapeHtml(item.studentId)}</strong>
-                <span>${escapeHtml(`${item.couponType} Â· ${item.mealCode}`)}</span>
+                <span>${escapeHtml(`${item.couponType} - ${item.mealCode}`)}</span>
               </div>
               <small>${escapeHtml(formatRelativeTime(item.issuedAt))}</small>
             </div>
@@ -1428,7 +1525,6 @@ function dashboardMarkup() {
   const computerDate = formatDateOnly(computerNow);
   const liveMealLabel = activeMeal.isActive ? activeMeal.mealName : "No active meal window";
   const liveMealDetail = activeMeal.timeLabel || "Waiting for next service window";
-  const apiBaseLabel = state.apiBaseUrl || "Not configured";
   const registeredStudents = Number(stats.registeredStudents || analytics.registeredStudents || 0);
   const activeStudentsToday = Number(stats.activeStudentsToday || analytics.activeStudentsToday || 0);
   const fullRedemptionHistory = state.activityRedemptions || [];
@@ -1479,7 +1575,7 @@ function dashboardMarkup() {
         </a>
         <a class="admin-quick-action admin-quick-action--menu" href="${escapeHtml(pageUrl("menu"))}">
           <span class="admin-quick-action-icon admin-icon--menu" aria-hidden="true"></span>
-          <span><strong>Publish menu</strong><small>Edit todayâ€™s meals</small></span>
+          <span><strong>Publish menu</strong><small>Edit today's meals</small></span>
           <span class="admin-quick-action-arrow" aria-hidden="true"></span>
         </a>
         <a class="admin-quick-action admin-quick-action--news" href="${escapeHtml(pageUrl("news"))}">
@@ -1596,7 +1692,7 @@ function dashboardMarkup() {
       "Student content",
       "Daily Menu",
       "This page is only for today's menu. Publish clean meal items here without mixing them with news tasks.",
-      `<button type="button" class="primary-button compact-primary-button" id="saveMenusButton">Publish todayâ€™s menu</button>`,
+      `<button type="button" class="primary-button compact-primary-button" id="saveMenusButton">Publish today's menu</button>`,
       `Student app reads these items from the shared backend after refresh.`,
     )}
     <section class="module-section">
@@ -1713,14 +1809,14 @@ function dashboardMarkup() {
   const passwordResetRequests = state.passwordResetRequests || [];
   const activityPage = `
     ${pageHeaderMarkup(
-      "Audit trail",
+      "Records and exports",
       "Student Records",
       "This page keeps the full coupon history and food feedback so staff can review, retain, and export student records over time.",
       `
         <div class="section-row compact">
-          <button type="button" class="secondary-button" id="exportStudentRecordsWeeklyButton">Weekly CSV</button>
-          <button type="button" class="secondary-button" id="exportStudentRecordsMonthlyButton">Monthly CSV</button>
-          <button type="button" class="secondary-button" id="exportStudentRecordsButton">Full CSV</button>
+          <button type="button" class="secondary-button" id="exportStudentRecordsWeeklyButton">Export this week</button>
+          <button type="button" class="secondary-button" id="exportStudentRecordsMonthlyButton">Export this month</button>
+          <button type="button" class="secondary-button" id="exportStudentRecordsButton">Export all records</button>
         </div>
       `,
       `Stored records stay available for review and CSV export.`,
@@ -1798,7 +1894,6 @@ function dashboardMarkup() {
         </div>
 
         <div class="dashboard-sidebar-panel glass-card dashboard-status-card">
-          ${detailItemMarkup("API base", apiBaseLabel)}
           ${detailItemMarkup("Computer time", computerStamp)}
           ${detailItemMarkup("Current meal", liveMealLabel)}
           ${detailItemMarkup("Meal window", liveMealDetail)}
@@ -1834,6 +1929,7 @@ function dashboardMarkup() {
             <button class="toolbar-search-button" type="submit">Find</button>
           </form>
           <div class="toolbar-actions">
+            <span class="toolbar-status-pill unsaved-indicator ${state.unsavedChanges ? "" : "hidden"}" id="unsavedChangesIndicator">Unsaved changes</span>
             <span class="toolbar-status-pill">${escapeHtml(computerDate || "Today")}</span>
             <button class="secondary-button toolbar-button" id="refreshDashboardButton" type="button">Refresh</button>
             <div class="profile-menu">
@@ -1890,7 +1986,20 @@ function bindEvents() {
     });
   }
 
-  logoutButton.onclick = logout;
+  const togglePasswordButton = document.getElementById("togglePasswordButton");
+  const adminPasswordInput = document.getElementById("adminPasswordInput");
+  if (togglePasswordButton && adminPasswordInput) {
+    togglePasswordButton.addEventListener("click", () => {
+      const willShow = adminPasswordInput.type === "password";
+      adminPasswordInput.type = willShow ? "text" : "password";
+      togglePasswordButton.textContent = willShow ? "Hide" : "Show";
+      togglePasswordButton.setAttribute("aria-label", willShow ? "Hide password" : "Show password");
+    });
+  }
+
+  if (logoutButton) {
+    logoutButton.onclick = () => logout();
+  }
   const profileMenuButton = document.getElementById("profileMenuButton");
   if (profileMenuButton) {
     profileMenuButton.addEventListener("mousedown", (event) => {
@@ -1935,8 +2044,20 @@ function bindEvents() {
   }
 
   document.querySelectorAll(".dashboard-nav-link").forEach((link) => {
-    link.addEventListener("click", () => {
+    link.addEventListener("click", (event) => {
+      if (!confirmDiscardChanges()) {
+        event.preventDefault();
+        return;
+      }
       state.sidebarOpen = false;
+    });
+  });
+
+  document.querySelectorAll(".admin-quick-action").forEach((link) => {
+    link.addEventListener("click", (event) => {
+      if (!confirmDiscardChanges()) {
+        event.preventDefault();
+      }
     });
   });
 
@@ -1951,6 +2072,9 @@ function bindEvents() {
   const refreshButton = document.getElementById("refreshDashboardButton");
   if (refreshButton) {
     refreshButton.addEventListener("click", () => {
+      if (!confirmDiscardChanges()) return;
+      state.scheduleDrafts = {};
+      setUnsavedChanges(false);
       setProfileMenuOpen(false);
       loadDashboard();
     });
@@ -1971,6 +2095,7 @@ function bindEvents() {
     scheduleForm.querySelectorAll("input").forEach((input) => {
       input.addEventListener("input", () => {
         state.scheduleDrafts[input.name] = input.value;
+        setUnsavedChanges(true);
       });
     });
   }
@@ -1980,14 +2105,23 @@ function bindEvents() {
     saveMenusButton.addEventListener("click", saveMenus);
   }
 
+  const menuForm = document.getElementById("menuForm");
+  if (menuForm) {
+    menuForm.addEventListener("input", () => setUnsavedChanges(true));
+  }
+
   const newsForm = document.getElementById("newsForm");
   if (newsForm) {
     newsForm.addEventListener("submit", saveNews);
+    newsForm.addEventListener("input", () => setUnsavedChanges(true));
   }
 
   const resetNewsFormButton = document.getElementById("resetNewsFormButton");
   if (resetNewsFormButton) {
-    resetNewsFormButton.addEventListener("click", resetNewsForm);
+    resetNewsFormButton.addEventListener("click", () => {
+      if (!confirmDiscardChanges()) return;
+      resetNewsForm();
+    });
   }
 
   document.querySelectorAll("[data-edit-news]").forEach((button) => {
@@ -2013,6 +2147,25 @@ function bindEvents() {
     exportStudentRecordsMonthlyButton.addEventListener("click", () => exportStudentRecordsCsv("monthly"));
   }
 
+  const recordFilterForm = document.getElementById("recordFilterForm");
+  if (recordFilterForm) {
+    recordFilterForm.addEventListener("submit", (event) => {
+      event.preventDefault();
+      const formData = new FormData(recordFilterForm);
+      state.recordQuery = String(formData.get("recordQuery") || "");
+      state.recordStatus = String(formData.get("recordStatus") || "all");
+      state.recordPage = 1;
+      render();
+    });
+  }
+
+  document.querySelectorAll("[data-record-page]").forEach((button) => {
+    button.addEventListener("click", () => {
+      state.recordPage = Number(button.dataset.recordPage || 1);
+      render();
+    });
+  });
+
   document.querySelectorAll("[data-approve-password-reset]").forEach((button) => {
     button.addEventListener("click", () => approvePasswordReset(button.dataset.approvePasswordReset));
   });
@@ -2036,6 +2189,11 @@ function bindEvents() {
 }
 
 async function approvePasswordReset(requestId) {
+  const confirmed = window.confirm(
+    "Approve this request and generate a one-time password reset code?",
+  );
+  if (!confirmed) return;
+
   try {
     const data = await api(`/admin/password-resets/${encodeURIComponent(requestId)}/approve`, {
       method: "POST",
@@ -2049,6 +2207,9 @@ async function approvePasswordReset(requestId) {
 }
 
 async function cancelPasswordReset(requestId) {
+  const confirmed = window.confirm("Cancel this student's password reset request?");
+  if (!confirmed) return;
+
   try {
     await api(`/admin/password-resets/${encodeURIComponent(requestId)}/cancel`, {
       method: "POST",
@@ -2239,12 +2400,18 @@ async function saveSchedule() {
     });
   }
 
+  const confirmed = window.confirm(
+    "Save these meal hours? The new schedule will immediately control coupon availability in the student app.",
+  );
+  if (!confirmed) return;
+
   try {
     await api("/admin/meal-windows", {
       method: "PUT",
       body: { mealWindows: payload },
     });
     state.scheduleDrafts = {};
+    setUnsavedChanges(false);
     showFlash("Meal windows updated", "success");
     await loadDashboard();
   } catch (error) {
@@ -2265,11 +2432,17 @@ async function saveMenus() {
       .filter(Boolean),
   }));
 
+  const confirmed = window.confirm(
+    "Publish this menu to the student app for today?",
+  );
+  if (!confirmed) return;
+
   try {
     await api("/admin/menus/today", {
       method: "PUT",
       body: { menus: payload },
     });
+    setUnsavedChanges(false);
     showFlash("Today's menu published to the app", "success");
     await loadDashboard();
   } catch (error) {
@@ -2282,9 +2455,11 @@ function resetNewsForm() {
   if (!form) return;
   form.reset();
   form.elements.newsId.value = "";
+  setUnsavedChanges(false);
 }
 
 function editNews(newsId) {
+  if (!confirmDiscardChanges()) return;
   const item = (state.content?.news || []).find((news) => String(news.id) === String(newsId));
   const form = document.getElementById("newsForm");
   if (!item || !form) return;
@@ -2297,6 +2472,7 @@ function editNews(newsId) {
   form.elements.publishAt.value = toDateOnly(item.publishAt);
   form.elements.expiresAt.value = toDateOnly(item.expiresAt);
   form.elements.body.value = item.body || "";
+  setUnsavedChanges(false);
   showFlash("Editing news post", "info");
   form.scrollIntoView({ behavior: "smooth", block: "center" });
 }
@@ -2318,6 +2494,12 @@ async function saveNews(event) {
       ? `${String(formData.get("expiresAt"))} 23:59:59`
       : null,
   };
+
+  const actionLabel = newsId ? "update" : "publish";
+  const confirmed = window.confirm(
+    `${actionLabel === "update" ? "Update" : "Publish"} this announcement?`,
+  );
+  if (!confirmed) return;
 
   try {
     await api(newsId ? `/admin/news/${newsId}` : "/admin/news", {
@@ -2348,9 +2530,18 @@ async function deleteNews(newsId) {
 }
 
 async function initialise() {
+  ["click", "keydown", "pointerdown", "touchstart"].forEach((eventName) => {
+    document.addEventListener(eventName, recordAdminActivity, { passive: true });
+  });
+  window.addEventListener("beforeunload", (event) => {
+    if (!state.unsavedChanges) return;
+    event.preventDefault();
+    event.returnValue = "";
+  });
   render();
   await checkHealth();
   if (state.token) {
+    startSessionTimeout();
     await loadDashboard();
   }
 }
