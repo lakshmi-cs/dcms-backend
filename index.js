@@ -279,6 +279,22 @@ function normalizeResponseCouponStatus(status) {
   return String(status || '').toUpperCase();
 }
 
+function buildPublicCouponCode({ tokenSignature, token } = {}) {
+  let signature = String(tokenSignature || '')
+    .replace(/[^A-Za-z0-9]/g, '')
+    .toUpperCase();
+
+  if (!signature && token) {
+    signature = crypto
+      .createHash('sha256')
+      .update(String(token))
+      .digest('hex')
+      .toUpperCase();
+  }
+
+  return signature ? `DCMS-${signature.slice(0, 4).padEnd(4, '0')}` : null;
+}
+
 function sanitizeCouponType(value) {
   const lowerValue = String(value || '').trim().toLowerCase();
 
@@ -716,7 +732,7 @@ function mapCouponRow(row) {
   return {
     ...row,
     status,
-    couponCode: row.couponCode || row.token || null,
+    couponCode: buildPublicCouponCode(row),
     addOns: normalizeCouponAddOns(row.addOnsRaw),
     add_ons: normalizeCouponAddOns(row.addOnsRaw),
   };
@@ -750,6 +766,7 @@ async function getRedemptions({
         meal_date AS mealDate,
         claim_option AS claimOption,
         token AS token,
+        token_signature AS tokenSignature,
         issued_at AS issuedAt,
         claimed_at AS claimedAt,
         activated_at AS activatedAt,
@@ -791,6 +808,7 @@ async function getStudentCoupons(studentId) {
         meal_date AS mealDate,
         claim_option AS claimOption,
         token AS token,
+        token_signature AS tokenSignature,
         issued_at AS issuedAt,
         claimed_at AS claimedAt,
         activated_at AS activatedAt,
@@ -1305,6 +1323,7 @@ app.post('/coupons/issue', async (req, res) => {
           data: {
             couponId: reservation.id,
             token,
+            couponCode: buildPublicCouponCode({ tokenSignature }),
             couponType: normalizedCouponType,
             meal: reservationMeal,
             mealCode: reservationMeal.mealCode,
@@ -1447,6 +1466,7 @@ app.post('/coupons/issue', async (req, res) => {
       data: {
         couponId: insertResult?.insertId,
         token,
+        couponCode: buildPublicCouponCode({ tokenSignature }),
         couponType: normalizedCouponType,
         addOns: normalizedCouponType === 'Economy' ? normalizedAddOns : [],
         add_ons: normalizedCouponType === 'Economy' ? normalizedAddOns : [],
@@ -1607,6 +1627,7 @@ app.post('/coupons/activate', async (req, res) => {
       data: {
         couponId: reservation.id,
         token,
+        couponCode: buildPublicCouponCode({ tokenSignature }),
         couponType: 'Coupon',
         meal: reservationMeal,
         mealCode: reservationMeal.mealCode,
