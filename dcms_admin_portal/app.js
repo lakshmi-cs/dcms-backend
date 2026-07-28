@@ -1513,6 +1513,7 @@ function dashboardMarkup() {
   const content = state.content || {};
   const stats = dashboard.stats || {};
   const activeMeal = dashboard.activeMeal || {};
+  state.currentPage = getCurrentPageKey();
   const menus = content.menus || [];
   const mealWindows = content.mealWindows || [];
   const news = content.news || [];
@@ -1551,7 +1552,6 @@ function dashboardMarkup() {
     total: Number(item.total || 0),
   }));
   const weeklyTrend = analytics.weeklyTrend || [];
-  state.currentPage = getCurrentPageKey();
   const currentSection = WORKSPACE_SECTIONS.find((section) => section.key === state.currentPage) || WORKSPACE_SECTIONS[0];
   const dashboardPage = `
     <section class="control-room-overview cafeteria-overview">

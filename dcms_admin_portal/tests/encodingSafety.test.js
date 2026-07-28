@@ -29,4 +29,19 @@ test("student record controls remain stable while an administrator is typing", (
     appSource,
     /autoRefreshEnabledPages\s*=\s*new Set\(\["overview"\]\)/,
   );
+
+  const pageDetectionIndex = appSource.indexOf(
+    "state.currentPage = getCurrentPageKey();",
+    appSource.indexOf("function dashboardMarkup"),
+  );
+  const recordSelectionIndex = appSource.indexOf(
+    'state.currentPage === "activity"',
+    appSource.indexOf("function dashboardMarkup"),
+  );
+  assert.ok(pageDetectionIndex >= 0);
+  assert.ok(recordSelectionIndex >= 0);
+  assert.ok(
+    pageDetectionIndex < recordSelectionIndex,
+    "the current page must be detected before choosing the record data source",
+  );
 });
