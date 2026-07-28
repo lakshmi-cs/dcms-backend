@@ -116,6 +116,21 @@ function isValidMealTime(timeValue) {
   return Boolean(match);
 }
 
+function isValidDateKey(dateValue) {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(
+    String(dateValue || '').trim(),
+  );
+  if (!match) return false;
+
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  const day = Number(match[3]);
+  const parsed = new Date(Date.UTC(year, month - 1, day));
+  return parsed.getUTCFullYear() === year &&
+    parsed.getUTCMonth() === month - 1 &&
+    parsed.getUTCDate() === day;
+}
+
 function toTimeLabel(timeValue) {
   const [hoursText = '0', minutesText = '0'] = String(timeValue || '00:00:00').split(':');
   const hours = Number(hoursText);
@@ -707,8 +722,22 @@ function mapCouponRow(row) {
   };
 }
 
-async function getRecentRedemptions(selectedDate) {
+async function getRedemptions({
+  startDate = null,
+  endDate = null,
+  limit = null,
+} = {}) {
   await expireStaleCouponRows();
+  const rangeFilter = startDate && endDate
+    ? 'WHERE DATE(issued_at) BETWEEN ? AND ?'
+    : '';
+  const normalizedLimit = Number.isInteger(Number(limit)) && Number(limit) > 0
+    ? Math.min(Number(limit), 10000)
+    : null;
+  const limitClause = normalizedLimit ? 'LIMIT ?' : '';
+  const params = startDate && endDate ? [startDate, endDate] : [];
+  if (normalizedLimit) params.push(normalizedLimit);
+
   const rows = await dbQuery(
     `
       SELECT
@@ -730,14 +759,22 @@ async function getRecentRedemptions(selectedDate) {
         redeemed_by AS redeemedBy,
         status
       FROM coupon_redemptions
-      WHERE COALESCE(meal_date, DATE(issued_at)) = ?
+      ${rangeFilter}
       ORDER BY COALESCE(redeemed_at, issued_at) DESC
-      LIMIT 20
+      ${limitClause}
     `,
-    [selectedDate],
+    params,
   );
 
   return rows.map(mapCouponRow);
+}
+
+async function getRecentRedemptions(selectedDate) {
+  return getRedemptions({
+    startDate: selectedDate,
+    endDate: selectedDate,
+    limit: 20,
+  });
 }
 
 async function getStudentCoupons(studentId) {
@@ -2032,8 +2069,35 @@ app.post('/admin/qr/validate', authenticateAdmin, async (req, res) => {
 
 app.get('/admin/redemptions', authenticateAdmin, async (req, res) => {
   try {
-    const selectedDate = req.query.date || getZonedNowParts().date;
-    const redemptions = await getRecentRedemptions(selectedDate);
+    const selectedDate = String(req.query.date || '').trim();
+    const startDate = String(req.query.startDate || '').trim();
+    const endDate = String(req.query.endDate || '').trim();
+    const requestedLimit = Number(req.query.limit || 5000);
+
+    if (selectedDate && !isValidDateKey(selectedDate)) {
+      res.status(400).json({ status: 'error', message: 'date must use YYYY-MM-DD.' });
+      return;
+    }
+    if ((startDate || endDate) && (!isValidDateKey(startDate) || !isValidDateKey(endDate))) {
+      res.status(400).json({
+        status: 'error',
+        message: 'startDate and endDate are both required in YYYY-MM-DD format.',
+      });
+      return;
+    }
+    if (startDate && endDate && startDate > endDate) {
+      res.status(400).json({
+        status: 'error',
+        message: 'startDate must be on or before endDate.',
+      });
+      return;
+    }
+
+    const redemptions = await getRedemptions({
+      startDate: selectedDate || startDate || null,
+      endDate: selectedDate || endDate || null,
+      limit: startDate && endDate ? null : requestedLimit,
+    });
     res.json({ status: 'success', data: redemptions });
   } catch (error) {
     res.status(500).json({ status: 'error', message: error.message });

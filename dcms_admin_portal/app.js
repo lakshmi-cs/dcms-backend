@@ -1895,48 +1895,92 @@ function getStudentRecordExportAnchorDate() {
   return getComputerNow();
 }
 
+function getStudentRecordExportAnchorDateKey() {
+  const anchorDate = getStudentRecordExportAnchorDate();
+  if (typeof timeUtils.toMalaysiaDateInputValue === "function") {
+    return timeUtils.toMalaysiaDateInputValue(anchorDate);
+  }
+
+  const year = anchorDate.getFullYear();
+  const month = String(anchorDate.getMonth() + 1).padStart(2, "0");
+  const day = String(anchorDate.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+function shiftStudentRecordExportDate(dateKey, numberOfDays) {
+  const date = new Date(`${dateKey}T00:00:00Z`);
+  date.setUTCDate(date.getUTCDate() + numberOfDays);
+  return date.toISOString().slice(0, 10);
+}
+
+function getStudentRecordExportDateRange(
+  scope,
+  anchorDateKey = getStudentRecordExportAnchorDateKey(),
+) {
+  const anchorDate = new Date(`${anchorDateKey}T00:00:00Z`);
+
+  if (scope === "weekly") {
+    const daysSinceMonday = (anchorDate.getUTCDay() + 6) % 7;
+    const startDate = shiftStudentRecordExportDate(anchorDateKey, -daysSinceMonday);
+    return {
+      startDate,
+      endDate: shiftStudentRecordExportDate(startDate, 6),
+    };
+  }
+
+  if (scope === "monthly") {
+    const year = anchorDate.getUTCFullYear();
+    const month = anchorDate.getUTCMonth();
+    const startDate = `${year}-${String(month + 1).padStart(2, "0")}-01`;
+    const monthEnd = new Date(Date.UTC(year, month + 1, 0));
+    return {
+      startDate,
+      endDate: monthEnd.toISOString().slice(0, 10),
+    };
+  }
+
+  return null;
+}
+
+function getStudentRecordDateKey(value) {
+  const parsed = parseDisplayDateTime(value);
+  if (!parsed) return "";
+  if (typeof timeUtils.toMalaysiaDateInputValue === "function") {
+    return timeUtils.toMalaysiaDateInputValue(parsed);
+  }
+  return String(value || "").slice(0, 10);
+}
+
 function filterStudentRecordsForExport(redemptions, scope) {
   if (scope === "full") {
     return redemptions;
   }
 
-  const anchorDate = getStudentRecordExportAnchorDate();
+  const dateRange = getStudentRecordExportDateRange(scope);
+  if (!dateRange) return redemptions;
 
-  if (scope === "monthly") {
-    const month = anchorDate.getMonth();
-    const year = anchorDate.getFullYear();
-    return redemptions.filter((row) => {
-      const issuedAt = parseDisplayDateTime(row.issuedAt);
-      return issuedAt &&
-        issuedAt.getMonth() === month &&
-        issuedAt.getFullYear() === year;
-    });
-  }
-
-  if (scope === "weekly") {
-    const weekStart = new Date(anchorDate);
-    weekStart.setHours(0, 0, 0, 0);
-    weekStart.setDate(anchorDate.getDate() - 6);
-
-    const weekEnd = new Date(anchorDate);
-    weekEnd.setHours(23, 59, 59, 999);
-
-    return redemptions.filter((row) => {
-      const issuedAt = parseDisplayDateTime(row.issuedAt);
-      return issuedAt && issuedAt >= weekStart && issuedAt <= weekEnd;
-    });
-  }
-
-  return redemptions;
+  return redemptions.filter((row) => {
+    const issuedDate = getStudentRecordDateKey(row.issuedAt);
+    return issuedDate &&
+      issuedDate >= dateRange.startDate &&
+      issuedDate <= dateRange.endDate;
+  });
 }
 
 async function exportStudentRecordsCsv(scope = "full") {
   try {
-    const redemptions = await api("/admin/redemptions?limit=5000");
+    const dateRange = getStudentRecordExportDateRange(scope);
+    const endpoint = dateRange
+      ? `/admin/redemptions?startDate=${encodeURIComponent(dateRange.startDate)}&endDate=${encodeURIComponent(dateRange.endDate)}`
+      : "/admin/redemptions?limit=5000";
+    const redemptions = await api(endpoint);
     const filteredRedemptions = filterStudentRecordsForExport(redemptions, scope);
 
     if (!Array.isArray(filteredRedemptions) || !filteredRedemptions.length) {
-      showFlash("No student records found for export.", "info");
+      const rangeMessage = dateRange
+        ? ` between ${dateRange.startDate} and ${dateRange.endDate}`
+        : "";
+      showFlash(`No student records found${rangeMessage}.`, "info");
       return;
     }
 
