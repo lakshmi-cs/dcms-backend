@@ -1840,10 +1840,16 @@ function dashboardMarkup() {
     </section>
     <section class="module-section">
       <article class="glass-card panel-card">
-        <div class="section-intro">
-          <p class="eyebrow">Student app link</p>
-          <h2>Food Feedback</h2>
-          <p class="panel-copy">Feedback submitted from the student Profile tab appears here for cafeteria staff review.</p>
+        <div class="section-row">
+          <div class="section-intro">
+            <p class="eyebrow">Student app link</p>
+            <h2>Food Feedback</h2>
+            <p class="panel-copy">Feedback submitted from the student Profile tab appears here for cafeteria staff review.</p>
+          </div>
+          <div class="section-row compact feedback-export-actions">
+            <button type="button" class="secondary-button" id="exportFeedbackMonthlyButton">Export this month</button>
+            <button type="button" class="secondary-button" id="exportFeedbackAllButton">Export all feedback</button>
+          </div>
         </div>
         ${mealFeedbackMarkup(mealFeedback)}
       </article>
@@ -2136,6 +2142,16 @@ function bindEvents() {
     exportStudentRecordsMonthlyButton.addEventListener("click", () => exportStudentRecordsCsv("monthly"));
   }
 
+  const exportFeedbackMonthlyButton = document.getElementById("exportFeedbackMonthlyButton");
+  if (exportFeedbackMonthlyButton) {
+    exportFeedbackMonthlyButton.addEventListener("click", () => exportMealFeedbackCsv("monthly"));
+  }
+
+  const exportFeedbackAllButton = document.getElementById("exportFeedbackAllButton");
+  if (exportFeedbackAllButton) {
+    exportFeedbackAllButton.addEventListener("click", () => exportMealFeedbackCsv("all"));
+  }
+
   const recordFilterForm = document.getElementById("recordFilterForm");
   if (recordFilterForm) {
     recordFilterForm.addEventListener("submit", (event) => {
@@ -2354,6 +2370,48 @@ async function exportStudentRecordsCsv(scope = "full") {
     showFlash(successMessages[scope] || successMessages.full, "success");
   } catch (error) {
     showFlash(error.message || "Unable to export student records.", "danger");
+  }
+}
+
+async function exportMealFeedbackCsv(scope = "all") {
+  try {
+    const dateRange = scope === "monthly"
+      ? getStudentRecordExportDateRange("monthly")
+      : null;
+    const endpoint = dateRange
+      ? `/admin/feedback?startDate=${encodeURIComponent(dateRange.startDate)}&endDate=${encodeURIComponent(dateRange.endDate)}`
+      : "/admin/feedback?limit=10000";
+    const feedbackEntries = await api(endpoint);
+
+    if (!Array.isArray(feedbackEntries) || !feedbackEntries.length) {
+      const rangeMessage = dateRange
+        ? ` between ${dateRange.startDate} and ${dateRange.endDate}`
+        : "";
+      showFlash(`No food feedback found${rangeMessage}.`, "info");
+      return;
+    }
+
+    const csvText = buildCsv(feedbackEntries, [
+      { label: "Feedback ID", resolve: (row) => row.id },
+      { label: "Student ID", resolve: (row) => row.studentId },
+      { label: "Meal", resolve: (row) => row.mealCode },
+      { label: "Rating (out of 5)", resolve: (row) => row.rating },
+      { label: "Comment", resolve: (row) => row.comment },
+      { label: "Submitted At (MYT)", resolve: (row) => formatDateTime(row.submittedAt) },
+    ]);
+
+    const filename = scope === "monthly"
+      ? `food-feedback-${dateRange.startDate.slice(0, 7)}.csv`
+      : "food-feedback-all.csv";
+    triggerCsvDownload(filename, csvText);
+    showFlash(
+      scope === "monthly"
+        ? "This month's food feedback exported as CSV for Excel."
+        : "All food feedback exported as CSV for Excel.",
+      "success",
+    );
+  } catch (error) {
+    showFlash(error.message || "Unable to export food feedback.", "danger");
   }
 }
 

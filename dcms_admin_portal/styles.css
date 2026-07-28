@@ -2690,6 +2690,33 @@ tbody tr:hover {
   min-height: 40px;
 }
 
+.feedback-export-actions {
+  flex: 0 0 auto;
+  justify-content: flex-end;
+}
+
+.feedback-export-actions .secondary-button {
+  min-width: 168px;
+}
+
+@media (max-width: 760px) {
+  .feedback-export-actions {
+    width: 100%;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .feedback-export-actions .secondary-button {
+    min-width: 0;
+  }
+}
+
+@media (max-width: 460px) {
+  .feedback-export-actions {
+    grid-template-columns: 1fr;
+  }
+}
+
 @media (prefers-contrast: more) {
   :root {
     --border: rgba(219, 227, 255, 0.52);

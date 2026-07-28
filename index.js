@@ -725,6 +725,38 @@ async function getMealFeedback(limit = 100) {
   return rows;
 }
 
+async function getMealFeedbackForExport({
+  startDate = null,
+  endDate = null,
+  limit = 10000,
+} = {}) {
+  const hasDateRange = Boolean(startDate && endDate);
+  const rangeFilter = hasDateRange
+    ? 'WHERE DATE(submitted_at) BETWEEN ? AND ?'
+    : '';
+  const normalizedLimit = Number.isInteger(Number(limit)) && Number(limit) > 0
+    ? Math.min(Number(limit), 10000)
+    : 10000;
+  const params = hasDateRange ? [startDate, endDate, normalizedLimit] : [normalizedLimit];
+
+  return dbQuery(
+    `
+      SELECT
+        id,
+        student_id AS studentId,
+        meal_code AS mealCode,
+        rating,
+        comment,
+        submitted_at AS submittedAt
+      FROM meal_feedback
+      ${rangeFilter}
+      ORDER BY submitted_at DESC
+      LIMIT ?
+    `,
+    params,
+  );
+}
+
 async function expireStaleCouponRows(nowParts = getZonedNowParts()) {
   await dbQuery(
     `
@@ -1925,6 +1957,38 @@ app.get('/admin/content', authenticateAdmin, async (req, res) => {
         mealFeedback,
       },
     });
+  } catch (error) {
+    res.status(500).json({ status: 'error', message: error.message });
+  }
+});
+
+app.get('/admin/feedback', authenticateAdmin, async (req, res) => {
+  try {
+    const startDate = String(req.query.startDate || '').trim();
+    const endDate = String(req.query.endDate || '').trim();
+    const requestedLimit = Number(req.query.limit || 10000);
+
+    if ((startDate || endDate) && (!isValidDateKey(startDate) || !isValidDateKey(endDate))) {
+      res.status(400).json({
+        status: 'error',
+        message: 'startDate and endDate are both required in YYYY-MM-DD format.',
+      });
+      return;
+    }
+    if (startDate && endDate && startDate > endDate) {
+      res.status(400).json({
+        status: 'error',
+        message: 'startDate must be on or before endDate.',
+      });
+      return;
+    }
+
+    const feedback = await getMealFeedbackForExport({
+      startDate: startDate || null,
+      endDate: endDate || null,
+      limit: requestedLimit,
+    });
+    res.json({ status: 'success', data: feedback });
   } catch (error) {
     res.status(500).json({ status: 'error', message: error.message });
   }
